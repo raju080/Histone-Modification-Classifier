@@ -1,4 +1,4 @@
-# sudo apt install bedtools
+sudo apt install bedtools
 
 ref_genome=/root/gdrive/MyDrive/Thesis/Epigenetic-Modification/hg19.fa
 

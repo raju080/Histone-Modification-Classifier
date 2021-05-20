@@ -1,12 +1,22 @@
 import sys
+import os
+import subprocess
 import numpy as np
 from Preprocess import Preprocessor
 from Model import Model
 
+
+
 # constants
-forward_seq_file = 'Dataset/forward.npy'
-reverse_seq_file = 'Dataset/reverse.npy'
-readout_file = 'Dataset/readout.npy'
+total_seq_postfix = "_5000"
+
+input_bed_file = 'Dataset/E118-H3K27ac.narrowPeak'
+pos_seq_file = 'Dataset/E118-H3K27ac_modified' + total_seq_postfix + '.fa'
+neg_seq_file = 'Dataset/E118-H3K27ac_negSet' + total_seq_postfix + '.fa'
+
+forward_seq_file = 'Dataset/forward' + total_seq_postfix + '.npy'
+reverse_seq_file = 'Dataset/reverse' + total_seq_postfix + '.npy'
+readout_file = 'Dataset/readout' + total_seq_postfix + '.npy'
 
 
 
@@ -161,10 +171,29 @@ def createAndRunMeuseumModel(processed_data, parameters_dict, alpha=100, beta=.0
 
 
 def main():
-    input_bed_file = 'Dataset/E118-H3K27ac.narrowPeak'
-    pos_seq_file = 'Dataset/E118-H3K27ac.fa'
-    neg_seq_file = 'Dataset/E118-H3K27ac_negSet.fa'
+    ### Modify the bed file keeping qvalue>=4
+    # preprocessor = Preprocessor()
+    # preprocessor.modifyBedFile(input_bed_file)
 
+
+    ### Generate the negative sequences
+    # command = 'Rscript bed_to_null_seq.R'
+    # os.system(command)
+
+
+    ### Convert bed to fa
+    # subprocess.call(['sh', './bed_to_fa.sh'])
+
+
+    ### Shrink fa
+    # subprocess.call(['sh', './fa_shrink.sh'])
+
+
+    ### Preprocess the pos and neg fasta file
+    # processInputData(pos_seq_file, neg_seq_file)
+
+
+    ### Run model on processed data
     processed_data = readInputData()
     # run the model once with the parameters
     parameter_file = 'parameters.txt'
@@ -172,6 +201,8 @@ def main():
     # results = createAndRunMeuseumModel(processed_data, parameters_dict)
     results = createAndRunMeuseumModel(processed_data, parameters_dict)
     print(results)
+
+    
     
 
 if __name__ == "__main__":
