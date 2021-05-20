@@ -54,14 +54,14 @@ def readParameters(file_name):
     return dict
 
 
-def createAndRunBasicModel(processed_data, parameters_dict, alpha=100, beta=.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
+def createAndRunBasicModel(processed_data, parameters_dict):
     # initiate a model with the specified parameters
     # seed = random.randint(1,1000)
     seed = 527
     model = Model(filters=parameters_dict["filters"], kernel_size=parameters_dict["kernel_size"], pool_type=parameters_dict["pool_type"], regularizer=parameters_dict["regularizer"],
             activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
     # creating the basic model
-    basic_model = model.create_basic_model(processed_data["forward"].shape, alpha, beta, bkg_const)
+    basic_model = model.create_basic_model(processed_data["forward"].shape)
     basic_model.summary()
     # running the model with the processed data
     results = model.runModel(basic_model, processed_data, seed)
@@ -198,8 +198,8 @@ def main():
     # run the model once with the parameters
     parameter_file = 'parameters.txt'
     parameters_dict = readParameters(parameter_file)
+    results = createAndRunBasicModel(processed_data, parameters_dict)
     # results = createAndRunMeuseumModel(processed_data, parameters_dict)
-    results = createAndRunMeuseumModel(processed_data, parameters_dict)
     print(results)
 
     

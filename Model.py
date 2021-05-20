@@ -40,155 +40,14 @@ from sklearn.metrics import r2_score
 from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score, KFold
 from sklearn.utils import shuffle
 
-#Reproducibility
-seed = random.randint(1,1000)
+from ConvolutionLayer import ConvolutionLayer
+
+# Reproducibility
+seed = random.randint(1, 1000)
 
 np.random.seed(seed)
 tf.random.set_seed(seed)
 
-class ConvolutionLayer(Conv1D):
-    def __init__(self, 
-                filters,
-                kernel_size,
-                data_format='channels_last',
-                alpha=100, 
-                beta=0.01, 
-                bkg_const=[0.25, 0.25, 0.25, 0.25],
-                padding='valid',
-                activation="relu",
-                use_bias=False,
-                kernel_initializer='glorot_uniform',
-                __name__ = 'ConvolutionLayer',
-                **kwargs):
-        super(ConvolutionLayer, self).__init__(filters=filters,
-            kernel_size=kernel_size,
-            activation=activation,
-            use_bias=use_bias,
-            kernel_initializer=kernel_initializer,
-            **kwargs)
-
-        self.alpha = alpha
-        self.beta = beta
-        self.bkg_const = bkg_const
-        self.run_value = 1
-
-    def call(self, inputs):
-
-      ## shape of self.kernel is (12, 4, 512)
-      ##the type of self.kernel is <class 'tensorflow.python.ops.resource_variable_ops.ResourceVariable'>
-
-        # print("self.run value is", self.run_value)
-        if self.run_value > 2:
-
-            x_tf = self.kernel  ##x_tf after reshaping is a tensor and not a weight variable :(
-            x_tf = tf.transpose(x_tf, [2, 0, 1])
-
-            # self.alpha = 10
-            self.beta = 1/self.alpha
-            bkg = tf.constant(self.bkg_const)
-            bkg_tf = tf.cast(bkg, tf.float32)
-            # filt_list = tf.map_fn(lambda x: tf.math.scalar_mul(self.beta, tf.subtract(tf.subtract(tf.subtract(tf.math.scalar_mul(self.alpha, x), tf.expand_dims(tf.math.reduce_max(tf.math.scalar_mul(self.alpha, x), axis = 1), axis = 1)), tf.expand_dims(tf.math.log(tf.math.reduce_sum(tf.math.exp(tf.subtract(tf.math.scalar_mul(self.alpha, x), tf.expand_dims(tf.math.reduce_max(tf.math.scalar_mul(self.alpha, x), axis = 1), axis = 1))), axis = 1)), axis = 1)), tf.math.log(tf.reshape(tf.tile(bkg_tf, [tf.shape(x)[0]]), [tf.shape(x)[0], tf.shape(bkg_tf)[0]])))), x_tf)
-            filt_list = tf.map_fn(
-                lambda x: tf.math.scalar_mul(
-                    self.beta,
-                    tf.subtract(
-                        tf.subtract(
-                            tf.subtract(
-                                tf.math.scalar_mul(self.alpha, x),
-                                tf.expand_dims(
-                                    tf.math.reduce_max(tf.math.scalar_mul(self.alpha, x), axis=1), axis=1
-                                ),
-                            ),
-                            tf.expand_dims(
-                                tf.math.log(
-                                    tf.math.reduce_sum(
-                                        tf.math.exp(
-                                            tf.subtract(
-                                                tf.math.scalar_mul(self.alpha, x),
-                                                tf.expand_dims(
-                                                    tf.math.reduce_max(
-                                                        tf.math.scalar_mul(self.alpha, x), axis=1
-                                                    ),
-                                                    axis=1,
-                                                ),
-                                            )
-                                        ),
-                                        axis=1,
-                                    )
-                                ),
-                                axis=1,
-                            ),
-                        ),
-                        tf.math.log(
-                            tf.reshape(
-                                tf.tile(bkg_tf, [tf.shape(x)[0]]),
-                                [tf.shape(x)[0], tf.shape(bkg_tf)[0]],
-                            )
-                        ),
-                    ),
-                ),
-                x_tf,
-            )
-
-            # filt_list = tf.math.scalar_mul(
-            #     self.beta,
-            #     tf.subtract(
-            #         tf.subtract(
-            #             tf.subtract(
-            #                 tf.math.scalar_mul(self.alpha, x),
-            #                 tf.expand_dims(
-            #                     tf.math.reduce_max(
-            #                         tf.math.scalar_mul(self.alpha, x),
-            #                         axis=1
-            #                     ),
-            #                     axis=1
-            #                 )
-            #             ),
-            #             tf.expand_dims(
-            #                 tf.math.log(
-            #                     tf.math.reduce_sum(
-            #                         tf.math.exp(
-            #                             tf.subtract(
-            #                                 tf.math.scalar_mul(self.alpha, x),
-            #                                 tf.expand_dims(
-            #                                     tf.math.reduce_max(
-            #                                         tf.math.scalar_mul(self.alpha, x),
-            #                                         axis=1
-            #                                     ),
-            #                                     axis=1
-            #                                 )
-            #                             )
-            #                         ),
-            #                         axis=1
-            #                     )
-            #                 ),
-            #                 axis=1
-            #             )
-            #         ),
-            #         tf.math.log(
-            #             tf.reshape(
-            #                 tf.tile(
-            #                     bkg_tf,
-            #                     [ tf.shape(x)[0] ]
-            #                 ),
-            #                 [ tf.shape(x)[0], tf.shape(bkg_tf)[0] ]
-            #             )
-            #         )
-            #     )
-            # )
-            #print("type of output from map_fn is", type(filt_list)) ##type of output from map_fn is <class 'tensorflow.python.framework.ops.Tensor'>   shape of output from map_fn is (10, 12, 4)
-            #print("shape of output from map_fn is", filt_list.shape)
-            #transf = tf.reshape(filt_list, [12, 4, self.filters]) ##12, 4, 512
-            transf = tf.transpose(filt_list, [1, 2, 0])
-            ##type of transf is <class 'tensorflow.python.framework.ops.Tensor'>
-            outputs = self._convolution_op(inputs, transf) ## type of outputs is <class 'tensorflow.python.framework.ops.Tensor'>
-
-        else:
-            outputs = self._convolution_op(inputs, self.kernel)
-
-
-        self.run_value += 1
-        return outputs
 
 class Model:
     def __init__(self, filters, kernel_size, pool_type, regularizer, activation_type, epochs, batch_size):
@@ -205,7 +64,8 @@ class Model:
         self.parameterPrint()
 
     def parameterPrint(self):
-        print("\n=========================== Parameters ===================================")
+        print(
+            "\n=========================== Parameters ===================================")
         print("# of Filters: " + str(self.filters))
         print("Kernel size: " + str(self.kernel_size))
         print("Pool type: " + self.pool_type)
@@ -213,15 +73,16 @@ class Model:
         print("activation_type: " + self.activation_type)
         print("epochs: " + str(self.epochs))
         print("batch_size: " + str(self.batch_size))
-        print("============================================================================\n")
+        print(
+            "============================================================================\n")
+
 
     def create_meuseum_model(self, dims, alpha=100, beta=0.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
         # different metric functions
         def coeff_determination(y_true, y_pred):
-            SS_res =  K.sum(K.square( y_true-y_pred ))
+            SS_res = K.sum(K.square(y_true-y_pred))
             SS_tot = K.sum(K.square(y_true - K.mean(y_true)))
             return (1 - SS_res/(SS_tot + K.epsilon()))
-
 
         def auroc(y_true, y_pred):
             return tf.py_func(roc_auc_score, (y_true, y_pred), tf.double)
@@ -230,21 +91,22 @@ class Model:
         # you would start by creating an input node:
         # dims[1] = sequence length
         # dims[2] = 4   (one hot encode for ACGT)
-        forward_input = keras.Input(shape=(dims[1],dims[2]), name = 'forward')
-        reverse_input = keras.Input(shape=(dims[1],dims[2]), name = 'reverse')
+        forward_input = keras.Input(shape=(dims[1], dims[2]), name='forward')
+        reverse_input = keras.Input(shape=(dims[1], dims[2]), name='reverse')
 
         #first_layer = Conv1D(filters=self.filters, kernel_size=self.kernel_size, data_format='channels_last', input_shape=(dims[1],dims[2]), use_bias = False)
-        ## with trainable = False
+        # with trainable = False
         #first_layer = Conv1D(filters=self.filters, kernel_size=self.kernel_size, kernel_initializer = my_init, data_format='channels_last', input_shape=(dims[1],dims[2]), use_bias = False, trainable=False)
-        first_layer = ConvolutionLayer(filters=self.filters, kernel_size=self.kernel_size, activation=self.activation_type, alpha=alpha, beta=beta, bkg_const=bkg_const, data_format='channels_last', use_bias = True)
+        first_layer = ConvolutionLayer(filters=self.filters, kernel_size=self.kernel_size, activation=self.activation_type,
+                                       alpha=alpha, beta=beta, bkg_const=bkg_const, data_format='channels_last', use_bias=True)
 
         fw = first_layer(forward_input)
         bw = first_layer(reverse_input)
 
         concat = concatenate([fw, bw], axis=1)
-        print("Concat shape-----------------",concat.shape)
+        print("Concat shape-----------------", concat.shape)
         pool_size_input = concat.shape[1]
-        print("pool_size_input--------------",pool_size_input)
+        print("pool_size_input--------------", pool_size_input)
         concat_relu = ReLU()(concat)
         #concat = Dense(1, activation= 'sigmoid')(concat)
 
@@ -259,22 +121,23 @@ class Model:
                 shape[0] = 10
                 return tuple(shape)
             #model.add(Lambda(top_k, arguments={'k': 10}))
+
             def top_k(inputs, k):
                 # tf.nn.top_k Finds values and indices of the k largest entries for the last dimension
                 print(inputs.shape)
-                inputs2 = tf.transpose(inputs, [0,2,1])
+                inputs2 = tf.transpose(inputs, [0, 2, 1])
                 new_vals = tf.nn.top_k(inputs2, k=k, sorted=True).values
                 # transform back to (None, 10, 512)
-                return tf.transpose(new_vals, [0,2,1])
+                return tf.transpose(new_vals, [0, 2, 1])
 
             pool_layer = Lambda(top_k, arguments={'k': 2})(concat_relu)
             # pool_layer = AveragePooling1D(pool_size=2)(pool_layer)
             pool_layer = MaxPooling1D(pool_size=2)(pool_layer)
         elif self.pool_type == 'Custom_sum':
-            ## apply relu function before custom_sum functions
+            # apply relu function before custom_sum functions
             def summed_up(inputs):
                 #nonzero_vals = tf.keras.backend.relu(inputs)
-                new_vals = tf.math.reduce_sum(inputs, axis = 1, keepdims = True)
+                new_vals = tf.math.reduce_sum(inputs, axis=1, keepdims=True)
                 return new_vals
             pool_layer = Lambda(summed_up)(concat_relu)
             # pool_layer = MaxPooling1D(pool_size=2)(pool_layer)
@@ -290,20 +153,24 @@ class Model:
         if self.regularizer == 'L_1':
             #outputs = Dense(1, kernel_initializer='normal', kernel_regularizer=regularizers.l1(0.001), activation= self.activation_type)(flat)
             # outputs = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l1(0.001), activation= self.activation_type)(after_flat)
-            outputs = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l1(0.001), activation= 'softmax')(after_flat)
+            outputs = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l1(
+                0.001), activation='softmax')(after_flat)
         elif self.regularizer == 'L_2':
             #outputs = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l1(0.001), activation= self.activation_type)(after_flat)
-            outputs = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l2(0.001), activation= 'softmax')(after_flat)
+            outputs = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l2(
+                0.001), activation='softmax')(after_flat)
         else:
             raise NameError('Set the regularizer name correctly')
 
-        #weight_forwardin_0=model.layers[0].get_weights()[0]
-        #print(weight_forwardin_0)
+        # weight_forwardin_0=model.layers[0].get_weights()[0]
+        # print(weight_forwardin_0)
         # print("creating the model")
-        model = keras.Model(inputs=[forward_input, reverse_input], outputs=outputs)
+        model = keras.Model(
+            inputs=[forward_input, reverse_input], outputs=outputs)
 
         #model.compile(loss='mean_squared_error', optimizer='adam', metrics = ['accuracy'])
-        model.compile(loss='binary_crossentropy', optimizer='adam', metrics = ['accuracy'])
+        model.compile(loss='binary_crossentropy',
+                      optimizer='adam', metrics=['accuracy'])
         # model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy', auroc])
 
         return model
@@ -311,20 +178,24 @@ class Model:
 
     def create_basic_model(self, sequence_shape):
         def sumUp(inputs):
-            new_vals = tf.math.reduce_sum(inputs, axis = 1, keepdims = True)
+            new_vals = tf.math.reduce_sum(inputs, axis=1, keepdims=True)
             return new_vals
         # input layers
-        forward_input = keras.Input(shape=(sequence_shape[1],sequence_shape[2]), name = 'forward')
-        reverse_input = keras.Input(shape=(sequence_shape[1],sequence_shape[2]), name = 'reverse') 
+        forward_input = keras.Input(
+            shape=(sequence_shape[1], sequence_shape[2]), name='forward')
+        reverse_input = keras.Input(
+            shape=(sequence_shape[1], sequence_shape[2]), name='reverse')
 
-        conv_layer_1 = ConvolutionLayer(filters=self.filters, kernel_size=self.kernel_size, activation=self.activation_type, input_shape=(sequence_shape[1],sequence_shape[2]))
+        conv_layer_1 = Conv1D(filters=self.filters, kernel_size=self.kernel_size,
+                                        activation=self.activation_type, input_shape=(sequence_shape[1], sequence_shape[2]))
         conv_layer_1_fw = conv_layer_1(forward_input)
         conv_layer_1_rs = conv_layer_1(reverse_input)
 
         concat_layer = concatenate([conv_layer_1_fw, conv_layer_1_rs], axis=1)
         relu_layer = ReLU()(concat_layer)
 
-        conv_layer_2 = Conv1D(filters=self.filters, kernel_size=self.kernel_size, activation=self.activation_type)(relu_layer)
+        conv_layer_2 = Conv1D(filters=self.filters, kernel_size=self.kernel_size,
+                              activation=self.activation_type)(relu_layer)
         relu_layer_2 = ReLU()(conv_layer_2)
 
         pool_layer = Lambda(sumUp)(relu_layer_2)
@@ -333,30 +204,15 @@ class Model:
         dense_layer1 = Dense(32, activation=self.activation_type)(flat_layer)
 
         # Binary classification with 2 output neurons
-        output_layer = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l2(0.001), activation= 'softmax')(dense_layer1)
+        output_layer = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l2(
+            0.001), activation='softmax')(dense_layer1)
 
-        model = keras.Model(inputs=[forward_input, reverse_input], outputs=output_layer)
-        model.compile(loss='binary_crossentropy', optimizer='adam', metrics = ['accuracy'])
+        model = keras.Model(
+            inputs=[forward_input, reverse_input], outputs=output_layer)
+        model.compile(loss='binary_crossentropy',
+                      optimizer='adam', metrics=['accuracy'])
 
         return model
-    
-    def runModelWithHardwareSupport(self, model, processed_dict, with_gpu=False):
-
-        if with_gpu == True: 
-            device_name = tf.test.gpu_device_name()
-            print(device_name)
-            if device_name != '/device:GPU:0':
-                print(
-                    '\n\nThis error most likely means that this notebook is not '
-                    'configured to use a GPU.  Change this in Notebook Settings via the '
-                    'command palette (cmd/ctrl-shift-P) or the Edit menu.\n\n')
-            raise SystemError('GPU device not found')
-
-            with tf.device('/device:GPU:0'):
-                runModel(model, processed_dict)
-        
-        else: 
-            runModel(model, processed_dict)
 
 
     def runModel(self, model, processed_dict, seed=0):
@@ -371,9 +227,11 @@ class Model:
             # seed = random.randint(1,1000)
             seed = 527
 
-        x1_train, x1_test, y1_train, y1_test = train_test_split(fw_fasta, readout, test_size=0.1, random_state=seed)
+        x1_train, x1_test, y1_train, y1_test = train_test_split(
+            fw_fasta, readout, test_size=0.1, random_state=seed)
         # split for reverse complemenet sequences
-        x2_train, x2_test, y2_train, y2_test = train_test_split(rc_fasta, readout, test_size=0.1, random_state=seed)
+        x2_train, x2_test, y2_train, y2_test = train_test_split(
+            rc_fasta, readout, test_size=0.1, random_state=seed)
         #assert x1_test == x2_test
         #assert y1_test == y2_test
 
@@ -390,18 +248,19 @@ class Model:
         # if we want to merge two training dataset
         # comb = np.concatenate((y1_train, y2_train))
 
-        ## Change it to categorical values
+        # Change it to categorical values
         y1_train = keras.utils.to_categorical(y1_train, 2)
         y1_test = keras.utils.to_categorical(y1_test, 2)
 
         print("\n=========================== Before model.fit ===================================")
         # train the data
-        model.fit({'forward': x1_train, 'reverse': x2_train}, y1_train, epochs=self.epochs,  batch_size=self.batch_size, validation_split=0.1, verbose=2)
+        model.fit({'forward': x1_train, 'reverse': x2_train}, y1_train, epochs=self.epochs,
+                  batch_size=self.batch_size, validation_split=0.1, verbose=2)
         print("=========================== After model.fit ===================================\n")
-        ## Save the entire model as a SavedModel.
-        ##model.save('my_model')
+        # Save the entire model as a SavedModel.
+        # model.save('my_model')
         # Save weights only: later used in self.filter_importance()
-        #model.save_weights('./my_checkpoint')
+        # model.save_weights('./my_checkpoint')
 
         # save each convolution learned filters as txt file
         """
@@ -433,7 +292,8 @@ class Model:
 
         # Compute Area Under the Receiver Operating Characteristic Curve (ROC AUC) from prediction scores.
         # Returns AUC
-        train_auc_score = sklearn.metrics.roc_auc_score(y1_train_orig, predictions_train)
+        train_auc_score = sklearn.metrics.roc_auc_score(
+            y1_train_orig, predictions_train)
         train_accuracy = true_pred/len(predictions_train)
         print('train-set auc score is: ' + str(train_auc_score))
         print('train-set accuracy is: ' + str(train_accuracy))
@@ -454,7 +314,8 @@ class Model:
         # print('Number of correct test-set predictions is: ' + str(true_pred))
         # print('Number of incorrect test-set predictions is: ' + str(false_pred))
 
-        test_auc_score = sklearn.metrics.roc_auc_score(y1_test_orig, predictions_test)
+        test_auc_score = sklearn.metrics.roc_auc_score(
+            y1_test_orig, predictions_test)
         test_accuracy = true_pred/len(predictions_test)
         print('\ntest-set auc score is: ' + str(test_auc_score))
         print('test-set accuracy is: ' + str(test_accuracy))
@@ -469,3 +330,21 @@ class Model:
         }
 
         return results
+
+    def runModelWithHardwareSupport(self, model, processed_dict, with_gpu=False):
+
+        if with_gpu == True:
+            device_name = tf.test.gpu_device_name()
+            print(device_name)
+            if device_name != '/device:GPU:0':
+                print(
+                    '\n\nThis error most likely means that this notebook is not '
+                    'configured to use a GPU.  Change this in Notebook Settings via the '
+                    'command palette (cmd/ctrl-shift-P) or the Edit menu.\n\n')
+            raise SystemError('GPU device not found')
+
+            with tf.device('/device:GPU:0'):
+                runModel(model, processed_dict)
+
+        else:
+            runModel(model, processed_dict)
