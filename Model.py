@@ -194,7 +194,7 @@ class Model:
         concat_layer = concatenate([conv_layer_1_fw, conv_layer_1_rs], axis=1)
         relu_layer = ReLU()(concat_layer)
 
-        conv_layer_2 = Conv1D(filters=self.filters, kernel_size=self.kernel_size,
+        conv_layer_2 = Conv1D(filters=self.filters//2, kernel_size=self.kernel_size,
                               activation=self.activation_type)(relu_layer)
         relu_layer_2 = ReLU()(conv_layer_2)
 

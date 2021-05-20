@@ -8,7 +8,7 @@ from Model import Model
 
 
 # constants
-total_seq_postfix = "_5000"
+total_seq_postfix = "_2000"
 
 input_bed_file = 'Dataset/E118-H3K27ac.narrowPeak'
 pos_seq_file = 'Dataset/E118-H3K27ac_modified' + total_seq_postfix + '.fa'
@@ -198,9 +198,9 @@ def main():
     # run the model once with the parameters
     parameter_file = 'parameters.txt'
     parameters_dict = readParameters(parameter_file)
-    results = createAndRunBasicModel(processed_data, parameters_dict)
-    # results = createAndRunMeuseumModel(processed_data, parameters_dict)
-    print(results)
+    # results = createAndRunBasicModel(processed_data, parameters_dict)
+    results = createAndRunMeuseumModel(processed_data, parameters_dict)
+    # print(results)
 
     
     
