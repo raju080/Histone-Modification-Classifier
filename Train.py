@@ -2,13 +2,17 @@ import sys
 import os
 import subprocess
 import numpy as np
+import h5py
+import tensorflow as tf
+from tensorflow.keras.models import save_model, load_model
+from sklearn.model_selection import train_test_split
+
 from Preprocess import Preprocessor
 from Model import Model
 
-
-
 # constants
-total_seq_postfix = "_2000"
+seed = 527
+total_seq_postfix = "_200"
 
 input_bed_file = 'Dataset/E118-H3K27ac.narrowPeak'
 pos_seq_file = 'Dataset/E118-H3K27ac_modified' + total_seq_postfix + '.fa'
@@ -18,25 +22,55 @@ forward_seq_file = 'Dataset/forward' + total_seq_postfix + '.npy'
 reverse_seq_file = 'Dataset/reverse' + total_seq_postfix + '.npy'
 readout_file = 'Dataset/readout' + total_seq_postfix + '.npy'
 
+train_forward_seq_file = 'Dataset/forward' + total_seq_postfix + '_train.npy'
+train_reverse_seq_file = 'Dataset/reverse' + total_seq_postfix + '_train.npy'
+train_readout_file = 'Dataset/readout' + total_seq_postfix + '_train.npy'
+
+test_forward_seq_file = 'Dataset/forward' + total_seq_postfix + '_test.npy'
+test_reverse_seq_file = 'Dataset/reverse' + total_seq_postfix + '_test.npy'
+test_readout_file = 'Dataset/readout' + total_seq_postfix + '_test.npy'
+
+model_file = 'TrainedModels/model'+ total_seq_postfix + '.h5'
 
 
 def processInputData(pos_seq_file, neg_seq_file):
     preprocessor = Preprocessor()
     processed_dict = preprocessor.oneHotEncode(
-        pos_seq_file=pos_seq_file, neg_seq_file=neg_seq_file)
+        pos_seq_file=pos_seq_file, neg_seq_file=neg_seq_file) 
     np.save(forward_seq_file, processed_dict['forward'])
     np.save(reverse_seq_file, processed_dict['reverse'])
     np.save(readout_file, processed_dict['readout'])
     print(processed_dict)
 
 
-def readInputData():
+def readInputData(forward_seq_file, reverse_seq_file, readout_file):
     processed_dict = {}
     processed_dict['forward'] = np.load(forward_seq_file)    
     processed_dict['reverse'] = np.load(reverse_seq_file)
     processed_dict['readout'] = np.load(readout_file)
     return processed_dict
 
+
+
+def splitTrainTestData(forward_seq_file, reverse_seq_file, readout_file):
+    processed_dict = readInputData(forward_seq_file, reverse_seq_file, readout_file)
+    forward = processed_dict['forward']
+    reverse = processed_dict['reverse']
+    readout = processed_dict['readout']
+
+    x1_train, x1_test, y1_train, y1_test = train_test_split(
+        forward, readout, test_size=0.1, random_state=seed)
+    # split for reverse complemenet sequences
+    x2_train, x2_test, y2_train, y2_test = train_test_split(
+        reverse, readout, test_size=0.1, random_state=seed)
+
+    np.save(train_forward_seq_file, x1_train)
+    np.save(train_reverse_seq_file, x2_train)
+    np.save(train_readout_file, y1_train)
+
+    np.save(test_forward_seq_file, x1_test)
+    np.save(test_reverse_seq_file, x2_test)
+    np.save(test_readout_file, y1_test)
 
 
 # get dictionary from text file
@@ -54,7 +88,7 @@ def readParameters(file_name):
     return dict
 
 
-def createAndRunBasicModel(processed_data, parameters_dict):
+def createAndTrainBasicModel(processed_data, parameters_dict):
     # initiate a model with the specified parameters
     # seed = random.randint(1,1000)
     seed = 527
@@ -64,13 +98,14 @@ def createAndRunBasicModel(processed_data, parameters_dict):
     basic_model = model.create_basic_model(processed_data["forward"].shape)
     basic_model.summary()
     # running the model with the processed data
-    results = model.runModel(basic_model, processed_data, seed)
-    # results = model.runModelWithHardwareSupport(basic_model, processed_data, with_gpu=True)
+    results = model.trainModel(basic_model, processed_data, seed)
+    # results = model.trainModelWithHardwareSupport(basic_model, processed_data, with_gpu=True)
+    basic_model.save(model_file)
 
     return results
 
 
-def createAndRunMeuseumModel(processed_data, parameters_dict, alpha=100, beta=.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
+def createAndTrainMeuseumModel(processed_data, parameters_dict, alpha=1000, beta=.001, bkg_const=[0.25, 0.25, 0.25, 0.25]):
     # initiate a model with the specified parameters
     # seed = random.randint(1,1000)
     seed = 527
@@ -80,8 +115,9 @@ def createAndRunMeuseumModel(processed_data, parameters_dict, alpha=100, beta=.0
     meuseum_model = model.create_meuseum_model(processed_data["forward"].shape, alpha, beta, bkg_const)
     meuseum_model.summary()
     # running the model with the processed data
-    results = model.runModel(meuseum_model, processed_data, seed)
-    # results = model.runModelWithHardwareSupport(meuseum_model, processed_data, with_gpu=True)
+    results = model.trainModel(meuseum_model, processed_data, seed)
+    # results = model.trainModelWithHardwareSupport(meuseum_model, processed_data, with_gpu=True)
+    meuseum_model.save(model_file)
 
     return results
 
@@ -139,7 +175,7 @@ def createAndRunMeuseumModel(processed_data, parameters_dict, alpha=100, beta=.0
 #                                         if (index <= computed_cnt):
 #                                             pass
 #                                         else:
-#                                             results = createAndRunMeuseumModel(processed_data, parameters_dict, alpha, beta, bkg_const)
+#                                             results = createAndTrainMeuseumModel(processed_data, parameters_dict, alpha, beta, bkg_const)
 #                                             # print(results)
 #                                             output_text = "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{:.3f},{:.3f},{:.3f},{:.3f},{},{}\n".format(
 #                                                 index,
@@ -193,14 +229,18 @@ def main():
     # processInputData(pos_seq_file, neg_seq_file)
 
 
+    ### Split train and test data
+    # splitTrainTestData(forward_seq_file, reverse_seq_file, readout_file)
+
+
     ### Run model on processed data
-    processed_data = readInputData()
+    processed_data = readInputData(train_forward_seq_file, train_reverse_seq_file, train_readout_file)
+    # processed_data = readInputData(forward_seq_file, reverse_seq_file, readout_file)
     # run the model once with the parameters
     parameter_file = 'parameters.txt'
     parameters_dict = readParameters(parameter_file)
-    # results = createAndRunBasicModel(processed_data, parameters_dict)
-    results = createAndRunMeuseumModel(processed_data, parameters_dict)
-    # print(results)
+    # results = createAndTrainBasicModel(processed_data, parameters_dict)
+    results = createAndTrainMeuseumModel(processed_data, parameters_dict)
 
     
     

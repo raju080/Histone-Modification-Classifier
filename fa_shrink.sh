@@ -1,5 +1,5 @@
 #awk -v RS='>' 'NR>1 { gsub("\n", ";", $0); sub(";$", "", $0); print ">"$0 }' E116-H3K4me3_negSet.fa | head -n 2000 | tr ';' '\n' > E116-H3K4me3_negSet_2k.fa
-size=2000
+size=200
 
 for f in $(find . -name '*modified.fa')
 do

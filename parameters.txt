@@ -3,5 +3,5 @@ kernel_size 9
 pool_type Custom_sum
 regularizer L_1
 activation_type relu
-epochs 12
-batch_size 512
+epochs 2
+batch_size 2

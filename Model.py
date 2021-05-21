@@ -43,8 +43,8 @@ from sklearn.utils import shuffle
 from ConvolutionLayer import ConvolutionLayer
 
 # Reproducibility
-seed = random.randint(1, 1000)
-
+# seed = random.randint(1, 1000)
+seed = 527
 np.random.seed(seed)
 tf.random.set_seed(seed)
 
@@ -186,7 +186,7 @@ class Model:
         reverse_input = keras.Input(
             shape=(sequence_shape[1], sequence_shape[2]), name='reverse')
 
-        conv_layer_1 = Conv1D(filters=self.filters, kernel_size=self.kernel_size,
+        conv_layer_1 = ConvolutionLayer(filters=self.filters, kernel_size=self.kernel_size,
                                         activation=self.activation_type, input_shape=(sequence_shape[1], sequence_shape[2]))
         conv_layer_1_fw = conv_layer_1(forward_input)
         conv_layer_1_rs = conv_layer_1(reverse_input)
@@ -215,13 +215,15 @@ class Model:
         return model
 
 
-    def runModel(self, model, processed_dict, seed=0):
+    def trainModel(self, model, processed_dict, seed=0):
         # print maximum length without truncation
         # np.set_printoptions(threshold=sys.maxsize)
 
         fw_fasta = processed_dict["forward"]
         rc_fasta = processed_dict["reverse"]
         readout = processed_dict["readout"]
+
+        print("Input size: " + str(fw_fasta.shape))
 
         if seed == 0:
             # seed = random.randint(1,1000)
@@ -331,8 +333,7 @@ class Model:
 
         return results
 
-    def runModelWithHardwareSupport(self, model, processed_dict, with_gpu=False):
-
+    def trainModelWithHardwareSupport(self, model, processed_dict, with_gpu=False):
         if with_gpu == True:
             device_name = tf.test.gpu_device_name()
             print(device_name)
@@ -344,7 +345,7 @@ class Model:
             raise SystemError('GPU device not found')
 
             with tf.device('/device:GPU:0'):
-                runModel(model, processed_dict)
+                trainModel(model, processed_dict)
 
         else:
-            runModel(model, processed_dict)
+            trainModel(model, processed_dict)
