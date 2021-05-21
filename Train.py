@@ -3,12 +3,16 @@ import os
 import subprocess
 import numpy as np
 import h5py
+
 import tensorflow as tf
 from tensorflow.keras.models import save_model, load_model
+
+import sklearn
 from sklearn.model_selection import train_test_split
 
 from Preprocess import Preprocessor
 from Model import Model
+from ConvolutionLayer import ConvolutionLayer
 
 # constants
 seed = 527
@@ -122,6 +126,35 @@ def createAndTrainMeuseumModel(processed_data, parameters_dict, alpha=1000, beta
     return results
 
 
+def testModel(model_file, forward_seq_file, reverse_seq_file, readout_file):
+    model = load_model(model_file, custom_objects={'ConvolutionLayer': ConvolutionLayer})
+    processed_dict = readInputData(forward_seq_file, reverse_seq_file, readout_file)
+    forward = processed_dict['forward']
+    reverse = processed_dict['reverse']
+    readout = processed_dict['readout']
+    # Prediction on test data
+    print("\n=========================== Prediction ===================================\n")
+    pred_test = model.predict({'forward': forward, 'reverse': reverse})
+    # See which label has the highest confidence value
+    predictions_test = np.argmax(pred_test, axis=1)
+
+    true_pred, false_pred = 0, 0
+    for count, value in enumerate(predictions_test):
+        if readout[count] == predictions_test[count]:
+            true_pred += 1
+        else:
+            false_pred += 1
+    # print('Total number of test-set predictions is: ' + str(len(y1_test_orig)))
+    # print('Number of correct test-set predictions is: ' + str(true_pred))
+    # print('Number of incorrect test-set predictions is: ' + str(false_pred))
+
+    test_auc_score = sklearn.metrics.roc_auc_score(
+        readout, predictions_test)
+    test_accuracy = true_pred/len(predictions_test)
+    print('\ntest-set auc score is: ' + str(test_auc_score))
+    print('test-set accuracy is: ' + str(test_accuracy))
+    print("========================================================================\n")
+
 
 # def hyperParameterTuner(processed_data):
 #     epigenome = "E116"
@@ -234,14 +267,17 @@ def main():
 
 
     ### Run model on processed data
-    processed_data = readInputData(train_forward_seq_file, train_reverse_seq_file, train_readout_file)
-    # processed_data = readInputData(forward_seq_file, reverse_seq_file, readout_file)
-    # run the model once with the parameters
-    parameter_file = 'parameters.txt'
-    parameters_dict = readParameters(parameter_file)
-    # results = createAndTrainBasicModel(processed_data, parameters_dict)
-    results = createAndTrainMeuseumModel(processed_data, parameters_dict)
+    # processed_data = readInputData(train_forward_seq_file, train_reverse_seq_file, train_readout_file)
+    # # processed_data = readInputData(forward_seq_file, reverse_seq_file, readout_file)
+    # # run the model once with the parameters
+    # parameter_file = 'parameters.txt'
+    # parameters_dict = readParameters(parameter_file)
+    # # results = createAndTrainBasicModel(processed_data, parameters_dict)
+    # results = createAndTrainMeuseumModel(processed_data, parameters_dict)
 
+
+    ### Prediction on the test data
+    testModel(model_file, test_forward_seq_file, test_reverse_seq_file, test_readout_file)
     
     
 
