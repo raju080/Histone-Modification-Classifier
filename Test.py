@@ -18,12 +18,20 @@ def writeDataFrameToBed(file_path, df):
     df.to_csv(file_path, header=None,
               index=None, sep='\t')
 
+def readQTLs(file_path):
+    dfs = pd.read_excel(file_path, sheet_name=None)
+    qtl_df = dfs.get('SuppTable_3_delrosario')
+    print(qtl_df)
+
 
 def main():
-    neg_input_bed_file = 'Dataset/E118-H3K27ac_negSet.bed'
-    df = readBedFile(neg_input_bed_file)
-    df['chromEnd'] = df['chromEnd']+1
-    writeDataFrameToBed(neg_input_bed_file, df)
+    # neg_input_bed_file = 'Dataset/E118-H3K27ac_negSet.bed'
+    # df = readBedFile(neg_input_bed_file)
+    # df['chromEnd'] = df['chromEnd']+1
+    # writeDataFrameToBed(neg_input_bed_file, df)
+
+    qtl_file = 'Dataset/41592_2015_BFnmeth3326_MOESM187_ESM.xlsx'
+    readQTLs(qtl_file)
 
 
 if __name__ == "__main__":

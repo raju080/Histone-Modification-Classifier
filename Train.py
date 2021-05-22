@@ -16,7 +16,7 @@ from ConvolutionLayer import ConvolutionLayer
 
 # constants
 seed = 527
-total_seq_postfix = "_200"
+total_seq_postfix = "_5000"
 
 input_bed_file = 'Dataset/E118-H3K27ac.narrowPeak'
 pos_seq_file = 'Dataset/E118-H3K27ac_modified' + total_seq_postfix + '.fa'
@@ -109,7 +109,24 @@ def createAndTrainBasicModel(processed_data, parameters_dict):
     return results
 
 
-def createAndTrainMeuseumModel(processed_data, parameters_dict, alpha=1000, beta=.001, bkg_const=[0.25, 0.25, 0.25, 0.25]):
+def createAndTrainMultiCNN(processed_data, parameters_dict):
+    # initiate a model with the specified parameters
+    # seed = random.randint(1,1000)
+    seed = 527
+    model = Model(filters=parameters_dict["filters"], kernel_size=parameters_dict["kernel_size"], pool_type=parameters_dict["pool_type"], regularizer=parameters_dict["regularizer"],
+            activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
+    # creating the basic model
+    cnn_model = model.create_CNNMulti_model(processed_data["forward"].shape)
+    cnn_model.summary()
+    # running the model with the processed data
+    results = model.trainModelOneInputLayer(cnn_model, processed_data, seed)
+    # results = model.trainModelWithHardwareSupport(cnn_model, processed_data, with_gpu=True)
+    cnn_model.save(model_file)
+
+    return results
+
+
+def createAndTrainMeuseumModel(processed_data, parameters_dict, alpha=100, beta=.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
     # initiate a model with the specified parameters
     # seed = random.randint(1,1000)
     seed = 527
@@ -144,9 +161,6 @@ def testModel(model_file, forward_seq_file, reverse_seq_file, readout_file):
             true_pred += 1
         else:
             false_pred += 1
-    # print('Total number of test-set predictions is: ' + str(len(y1_test_orig)))
-    # print('Number of correct test-set predictions is: ' + str(true_pred))
-    # print('Number of incorrect test-set predictions is: ' + str(false_pred))
 
     test_auc_score = sklearn.metrics.roc_auc_score(
         readout, predictions_test)
@@ -154,6 +168,8 @@ def testModel(model_file, forward_seq_file, reverse_seq_file, readout_file):
     print('\ntest-set auc score is: ' + str(test_auc_score))
     print('test-set accuracy is: ' + str(test_accuracy))
     print("========================================================================\n")
+    return test_auc_score, test_accuracy
+
 
 
 # def hyperParameterTuner(processed_data):
@@ -267,12 +283,14 @@ def main():
 
 
     ### Run model on processed data
-    # processed_data = readInputData(train_forward_seq_file, train_reverse_seq_file, train_readout_file)
-    # # processed_data = readInputData(forward_seq_file, reverse_seq_file, readout_file)
-    # # run the model once with the parameters
-    # parameter_file = 'parameters.txt'
-    # parameters_dict = readParameters(parameter_file)
-    # # results = createAndTrainBasicModel(processed_data, parameters_dict)
+    processed_data = readInputData(train_forward_seq_file, train_reverse_seq_file, train_readout_file)
+    print("Input size: " + str(processed_data['forward'].shape))
+    # processed_data = readInputData(forward_seq_file, reverse_seq_file, readout_file)
+    # run the model once with the parameters
+    parameter_file = 'parameters.txt'
+    parameters_dict = readParameters(parameter_file)
+    # results = createAndTrainBasicModel(processed_data, parameters_dict)
+    results = createAndTrainMultiCNN(processed_data, parameters_dict)
     # results = createAndTrainMeuseumModel(processed_data, parameters_dict)
 
 
