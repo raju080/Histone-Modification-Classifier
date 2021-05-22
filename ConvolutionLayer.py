@@ -29,16 +29,10 @@ class ConvolutionLayer(Conv1D):
         self.run_value = 1
 
     def call(self, inputs):
-
-      # shape of self.kernel is (12, 4, 512)
-      # the type of self.kernel is <class 'tensorflow.python.ops.resource_variable_ops.ResourceVariable'>
-
-        # print("self.run value is", self.run_value)
+        print("self.run value is", self.run_value)
         if self.run_value > 2:
-
             x_tf = self.kernel  # x_tf after reshaping is a tensor and not a weight variable :(
             x_tf = tf.transpose(x_tf, [2, 0, 1])
-
             # self.alpha = 10
             self.beta = 1/self.alpha
             bkg = tf.constant(self.bkg_const)

@@ -214,64 +214,8 @@ class Model:
 
         return model
 
-    def create_CNNBasic_model(self, sequence_shape, alpha=100, beta=0.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
+    def create_Vanilla_CNN_model(self, sequence_shape, alpha=100, beta=0.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
         # input layers
-        forward_input = keras.Input(shape=(sequence_shape[1],sequence_shape[2]), name = 'forward')
-        reverse_input = keras.Input(shape=(sequence_shape[1],sequence_shape[2]), name = 'reverse')
-        print("Forward shape----------------",forward_input)
-        print("Reverse shape----------------",reverse_input)
-        model = Sequential()
-
-        first_layer = Conv1D(filters=self.filters, kernel_size=self.kernel_size, activation=self.activation_type, input_shape=(sequence_shape[1],sequence_shape[2]))
-        fw = first_layer(forward_input)
-        bw = first_layer(reverse_input)
-        print("after Conv1D fw shape----------------",fw)
-        print("after Conv1D bw shape----------------",bw)
-        concat = concatenate([fw, bw], axis=1)
-        print("Concat shape-----------------",concat.shape)
-        pool_size_input = concat.shape[1]
-        #model.add(first_layer)
-        #pool_size_input = 2
-        if self.pool_type == 'Max':
-            pool_layer = MaxPooling1D(pool_size=pool_size_input)(concat)
-        elif self.pool_type == 'Ave':
-            pool_layer = AveragePooling1D(pool_size=pool_size_input)(concat)
-        else:
-            raise NameError('Set the pooling layer name correctly')
-        # model.add(pool_layer)
-        print("After Maxpooling shape-----------------",pool_layer.shape)
-        # second_layer = Conv1D(filters=self.filters, kernel_size=self.kernel_size, activation=self.activation_type, input_shape=(concat.shape[1],concat.shape[2]))
-        # pool_layer = second_layer(pool_layer)
-        flat = Flatten()(pool_layer)
-        # model.add(flat)
-
-        after_flat = Dense(32, activation=self.activation_type)(flat)
-        # model.add(after_flat)
-
-        # Binary classification with 2 output neurons
-        if self.regularizer == 'L_1':
-            outputs = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l1(0.001), activation= 'sigmoid')(after_flat)
-        elif self.regularizer == 'L_2':
-            outputs = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l2(0.001), activation= 'sigmoid')(after_flat)
-        else:
-            raise NameError('Set the regularizer name correctly')
-        # model.add(outputs)
-
-        #weight_forwardin_0=model.layers[0].get_weights()[0]
-        #print(weight_forwardin_0)
-        # print("creating the model")
-        model = keras.Model(inputs=[forward_input, reverse_input], outputs=outputs)
-
-        model.compile(loss='mean_squared_error', optimizer='adam', metrics = ['accuracy'])
-        # model.compile(loss='binary_crossentropy', optimizer='adam', metrics = ['accuracy'])
-        # model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy', auroc])
-
-        return model
-
-
-
-
-    def create_CNNMulti_model(self, sequence_shape, alpha=100, beta=0.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
         def sumUp(inputs):
             new_vals = tf.math.reduce_sum(inputs, axis=1, keepdims=True)
             return new_vals
@@ -281,15 +225,63 @@ class Model:
 
         conv_layer_1 = ConvolutionLayer(filters=self.filters, kernel_size=self.kernel_size,
                                         activation=self.activation_type, input_shape=(sequence_shape[1], sequence_shape[2]))(input_layer)
-
-
-        conv_layer_2 = Conv1D(filters=self.filters//2, kernel_size=self.kernel_size,
-                              activation=self.activation_type)(conv_layer_1)
-
-        pool_layer = Lambda(sumUp)(conv_layer_2)
+    
+        relu_layer = ReLU()(conv_layer_1)
+        pool_layer = Lambda(sumUp)(relu_layer)
         flat_layer = Flatten()(pool_layer)
 
         dense_layer1 = Dense(32, activation=self.activation_type)(flat_layer)
+
+        # Binary classification with 2 output neurons
+        output_layer = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l2(
+            0.001), activation='softmax')(dense_layer1)
+
+        model = keras.Model(
+            inputs=input_layer, outputs=output_layer)
+        model.compile(loss='binary_crossentropy',
+                      optimizer='adam', metrics=['accuracy'])
+
+        return model
+
+
+
+
+    def create_Multi_CNN_model(self, sequence_shape, alpha=100, beta=0.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
+        def sumUp(inputs):
+            new_vals = tf.math.reduce_sum(inputs, axis=1, keepdims=True)
+            return new_vals
+        pool_size_input = 4
+        # input layers
+        input_layer = keras.Input(
+            shape=(sequence_shape[1], sequence_shape[2]))
+
+        conv_layer_1 = ConvolutionLayer(filters=self.filters, kernel_size=self.kernel_size,
+                                        activation=self.activation_type, input_shape=(sequence_shape[1], sequence_shape[2]))(input_layer)
+
+        pool_layer_1 = MaxPooling1D(pool_size=pool_size_input)(conv_layer_1)
+        relu_layer_1 = ReLU()(pool_layer_1)
+
+        conv_layer_2 = Conv1D(filters=self.filters//2, kernel_size=self.kernel_size,
+                              activation=self.activation_type)(relu_layer_1)
+        pool_layer_2 = MaxPooling1D(pool_size=pool_size_input)(conv_layer_2)
+        relu_layer_2 = ReLU()(pool_layer_2)
+
+        # conv_layer_3 = Conv1D(filters=self.filters//2, kernel_size=self.kernel_size,
+        #                       activation=self.activation_type)(relu_layer_3)
+        # relu_layer_3 = ReLU()(conv_layer_3)
+
+        # conv_layer_4 = Conv1D(filters=self.filters//2, kernel_size=self.kernel_size,
+        #                       activation=self.activation_type)(relu_layer_3)
+        # relu_layer_4 = ReLU()(conv_layer_4)
+
+        # pool_layer = Lambda(sumUp)(relu_layer_4)
+
+        pool_layer = Lambda(sumUp)(relu_layer_2)
+        flat_layer = Flatten()(pool_layer)
+
+        dense_layer1 = Dense(64, activation=self.activation_type)(flat_layer)
+
+        dense_layer2 = Dense(32, activation=self.activation_type)(flat_layer)
 
         # Binary classification with 2 output neurons
         output_layer = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l2(
@@ -583,7 +575,7 @@ class Model:
 
         true_pred, false_pred = 0, 0
         for count, value in enumerate(predictions_train):
-            if y1_train_orig[count] == predictions_train[count]:
+            if train_output_data[count] == predictions_train[count]:
                 true_pred += 1
             else:
                 false_pred += 1
@@ -604,7 +596,7 @@ class Model:
 
         true_pred, false_pred = 0, 0
         for count, value in enumerate(predictions_test):
-            if y1_test_orig[count] == predictions_test[count]:
+            if test_output_data[count] == predictions_test[count]:
                 true_pred += 1
             else:
                 false_pred += 1

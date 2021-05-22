@@ -34,7 +34,7 @@ test_forward_seq_file = 'Dataset/forward' + total_seq_postfix + '_test.npy'
 test_reverse_seq_file = 'Dataset/reverse' + total_seq_postfix + '_test.npy'
 test_readout_file = 'Dataset/readout' + total_seq_postfix + '_test.npy'
 
-model_file = 'TrainedModels/model'+ total_seq_postfix + '.h5'
+model_file = 'TrainedModels/model'+ total_seq_postfix
 
 
 def processInputData(pos_seq_file, neg_seq_file):
@@ -104,7 +104,24 @@ def createAndTrainBasicModel(processed_data, parameters_dict):
     # running the model with the processed data
     results = model.trainModel(basic_model, processed_data, seed)
     # results = model.trainModelWithHardwareSupport(basic_model, processed_data, with_gpu=True)
-    basic_model.save(model_file)
+    basic_model.save(model_file+'_basic.h5')
+
+    return results
+
+
+def createAndTrainVanillaCNN(processed_data, parameters_dict):
+    # initiate a model with the specified parameters
+    # seed = random.randint(1,1000)
+    seed = 527
+    model = Model(filters=parameters_dict["filters"], kernel_size=parameters_dict["kernel_size"], pool_type=parameters_dict["pool_type"], regularizer=parameters_dict["regularizer"],
+            activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
+    # creating the basic model
+    cnn_model = model.create_Vanilla_CNN_model(processed_data["forward"].shape)
+    cnn_model.summary()
+    # running the model with the processed data
+    results = model.trainModelOneInputLayer(cnn_model, processed_data, seed)
+    # results = model.trainModelWithHardwareSupport(cnn_model, processed_data, with_gpu=True)
+    cnn_model.save(model_file+'_vanillaCNN.h5')
 
     return results
 
@@ -116,12 +133,12 @@ def createAndTrainMultiCNN(processed_data, parameters_dict):
     model = Model(filters=parameters_dict["filters"], kernel_size=parameters_dict["kernel_size"], pool_type=parameters_dict["pool_type"], regularizer=parameters_dict["regularizer"],
             activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
     # creating the basic model
-    cnn_model = model.create_CNNMulti_model(processed_data["forward"].shape)
+    cnn_model = model.create_Multi_CNN_model(processed_data["forward"].shape)
     cnn_model.summary()
     # running the model with the processed data
     results = model.trainModelOneInputLayer(cnn_model, processed_data, seed)
     # results = model.trainModelWithHardwareSupport(cnn_model, processed_data, with_gpu=True)
-    cnn_model.save(model_file)
+    cnn_model.save(model_file+'_multiCNN.h5')
 
     return results
 
@@ -138,7 +155,7 @@ def createAndTrainMeuseumModel(processed_data, parameters_dict, alpha=100, beta=
     # running the model with the processed data
     results = model.trainModel(meuseum_model, processed_data, seed)
     # results = model.trainModelWithHardwareSupport(meuseum_model, processed_data, with_gpu=True)
-    meuseum_model.save(model_file)
+    meuseum_model.save(model_file+'_meuseum.h5')
 
     return results
 
@@ -290,12 +307,13 @@ def main():
     parameter_file = 'parameters.txt'
     parameters_dict = readParameters(parameter_file)
     # results = createAndTrainBasicModel(processed_data, parameters_dict)
+    # results = createAndTrainVanillaCNN(processed_data, parameters_dict)
     results = createAndTrainMultiCNN(processed_data, parameters_dict)
     # results = createAndTrainMeuseumModel(processed_data, parameters_dict)
 
 
     ### Prediction on the test data
-    testModel(model_file, test_forward_seq_file, test_reverse_seq_file, test_readout_file)
+    # testModel(model_file, test_forward_seq_file, test_reverse_seq_file, test_readout_file)
     
     
 
