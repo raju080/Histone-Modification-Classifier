@@ -258,12 +258,9 @@ class Model:
         conv_layer_1 = ConvolutionLayer(filters=self.filters, kernel_size=self.kernel_size,
                                         activation=self.activation_type, input_shape=(sequence_shape[1], sequence_shape[2]))(input_layer)
 
-        pool_layer_1 = MaxPooling1D(pool_size=pool_size_input)(conv_layer_1)
         relu_layer_1 = ReLU()(pool_layer_1)
-
         conv_layer_2 = Conv1D(filters=self.filters//2, kernel_size=self.kernel_size,
                               activation=self.activation_type)(relu_layer_1)
-        pool_layer_2 = MaxPooling1D(pool_size=pool_size_input)(conv_layer_2)
         relu_layer_2 = ReLU()(pool_layer_2)
 
         # conv_layer_3 = Conv1D(filters=self.filters//2, kernel_size=self.kernel_size,
@@ -281,11 +278,11 @@ class Model:
 
         dense_layer1 = Dense(64, activation=self.activation_type)(flat_layer)
 
-        dense_layer2 = Dense(32, activation=self.activation_type)(flat_layer)
+        dense_layer2 = Dense(32, activation=self.activation_type)(dense_layer1)
 
         # Binary classification with 2 output neurons
         output_layer = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l2(
-            0.001), activation='softmax')(dense_layer1)
+            0.001), activation='softmax')(dense_layer2)
 
         model = keras.Model(
             inputs=input_layer, outputs=output_layer)

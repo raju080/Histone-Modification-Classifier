@@ -17,6 +17,10 @@ from ConvolutionLayer import ConvolutionLayer
 # constants
 seed = 527
 total_seq_postfix = "_5000"
+# types: basic, meuseum, vanilla_cnn, multi_cnn
+model_type = 'multi_cnn'
+# output file to save the model after training
+model_file = 'TrainedModels/model'+ total_seq_postfix + '_' + model_type + '.h5'
 
 input_bed_file = 'Dataset/E118-H3K27ac.narrowPeak'
 pos_seq_file = 'Dataset/E118-H3K27ac_modified' + total_seq_postfix + '.fa'
@@ -33,8 +37,6 @@ train_readout_file = 'Dataset/readout' + total_seq_postfix + '_train.npy'
 test_forward_seq_file = 'Dataset/forward' + total_seq_postfix + '_test.npy'
 test_reverse_seq_file = 'Dataset/reverse' + total_seq_postfix + '_test.npy'
 test_readout_file = 'Dataset/readout' + total_seq_postfix + '_test.npy'
-
-model_file = 'TrainedModels/model'+ total_seq_postfix
 
 
 def processInputData(pos_seq_file, neg_seq_file):
@@ -92,7 +94,7 @@ def readParameters(file_name):
     return dict
 
 
-def createAndTrainBasicModel(processed_data, parameters_dict):
+def createAndTrainBasicModel(processed_data, parameters_dict, model_file):
     # initiate a model with the specified parameters
     # seed = random.randint(1,1000)
     seed = 527
@@ -104,12 +106,12 @@ def createAndTrainBasicModel(processed_data, parameters_dict):
     # running the model with the processed data
     results = model.trainModel(basic_model, processed_data, seed)
     # results = model.trainModelWithHardwareSupport(basic_model, processed_data, with_gpu=True)
-    basic_model.save(model_file+'_basic.h5')
+    basic_model.save(model_file)
 
     return results
 
 
-def createAndTrainVanillaCNN(processed_data, parameters_dict):
+def createAndTrainVanillaCNN(processed_data, parameters_dict, model_file):
     # initiate a model with the specified parameters
     # seed = random.randint(1,1000)
     seed = 527
@@ -121,12 +123,12 @@ def createAndTrainVanillaCNN(processed_data, parameters_dict):
     # running the model with the processed data
     results = model.trainModelOneInputLayer(cnn_model, processed_data, seed)
     # results = model.trainModelWithHardwareSupport(cnn_model, processed_data, with_gpu=True)
-    cnn_model.save(model_file+'_vanillaCNN.h5')
+    cnn_model.save(model_file)
 
     return results
 
 
-def createAndTrainMultiCNN(processed_data, parameters_dict):
+def createAndTrainMultiCNN(processed_data, parameters_dict, model_file):
     # initiate a model with the specified parameters
     # seed = random.randint(1,1000)
     seed = 527
@@ -138,12 +140,12 @@ def createAndTrainMultiCNN(processed_data, parameters_dict):
     # running the model with the processed data
     results = model.trainModelOneInputLayer(cnn_model, processed_data, seed)
     # results = model.trainModelWithHardwareSupport(cnn_model, processed_data, with_gpu=True)
-    cnn_model.save(model_file+'_multiCNN.h5')
+    cnn_model.save(model_file)
 
     return results
 
 
-def createAndTrainMeuseumModel(processed_data, parameters_dict, alpha=100, beta=.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
+def createAndTrainMeuseumModel(processed_data, parameters_dict, model_file, alpha=100, beta=.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
     # initiate a model with the specified parameters
     # seed = random.randint(1,1000)
     seed = 527
@@ -155,32 +157,54 @@ def createAndTrainMeuseumModel(processed_data, parameters_dict, alpha=100, beta=
     # running the model with the processed data
     results = model.trainModel(meuseum_model, processed_data, seed)
     # results = model.trainModelWithHardwareSupport(meuseum_model, processed_data, with_gpu=True)
-    meuseum_model.save(model_file+'_meuseum.h5')
+    meuseum_model.save(model_file)
 
     return results
 
 
-def testModel(model_file, forward_seq_file, reverse_seq_file, readout_file):
+def createAndTrainModel(processed_data, parameters_dict, model_type):
+    if model_type=='basic':
+        results = createAndTrainBasicModel(processed_data, parameters_dict, model_file)
+    elif model_type=='meuseum':
+        results = createAndTrainMeuseumModel(processed_data, parameters_dict, model_file)
+    elif model_type=='vanilla_cnn':
+        results = createAndTrainVanillaCNN(processed_data, parameters_dict, model_file)
+    elif model_type=='multi_cnn':
+        results = createAndTrainMultiCNN(processed_data, parameters_dict, model_file)
+    return results
+
+
+def testModel(model_file, model_type, forward_seq_file, reverse_seq_file, readout_file):
     model = load_model(model_file, custom_objects={'ConvolutionLayer': ConvolutionLayer})
+    model.summary()
     processed_dict = readInputData(forward_seq_file, reverse_seq_file, readout_file)
     forward = processed_dict['forward']
     reverse = processed_dict['reverse']
     readout = processed_dict['readout']
     # Prediction on test data
+    if model_type=='basic' or model_type=='meuseum':
+        test_input_data = {'forward': forward, 'reverse': reverse}
+        test_output_data = readout
+    elif model_type=='vanilla_cnn' or model_type=='multi_cnn':
+        test_input_data = np.concatenate((forward, reverse), axis=0)
+        test_output_data = np.concatenate((readout, readout), axis=0)
+    else:
+        test_input_data = np.concatenate((forward, reverse), axis=0)
+        test_output_data = np.concatenate((readout, readout), axis=0)
     print("\n=========================== Prediction ===================================\n")
-    pred_test = model.predict({'forward': forward, 'reverse': reverse})
+    pred_test = model.predict(test_input_data)
     # See which label has the highest confidence value
     predictions_test = np.argmax(pred_test, axis=1)
 
     true_pred, false_pred = 0, 0
     for count, value in enumerate(predictions_test):
-        if readout[count] == predictions_test[count]:
+        if test_output_data[count] == predictions_test[count]:
             true_pred += 1
         else:
             false_pred += 1
 
     test_auc_score = sklearn.metrics.roc_auc_score(
-        readout, predictions_test)
+        test_output_data, predictions_test)
     test_accuracy = true_pred/len(predictions_test)
     print('\ntest-set auc score is: ' + str(test_auc_score))
     print('test-set accuracy is: ' + str(test_accuracy))
@@ -272,6 +296,9 @@ def testModel(model_file, forward_seq_file, reverse_seq_file, readout_file):
 
 
 
+
+
+
 def main():
     ### Modify the bed file keeping qvalue>=4
     # preprocessor = Preprocessor()
@@ -300,20 +327,17 @@ def main():
 
 
     ### Run model on processed data
-    processed_data = readInputData(train_forward_seq_file, train_reverse_seq_file, train_readout_file)
-    print("Input size: " + str(processed_data['forward'].shape))
-    # processed_data = readInputData(forward_seq_file, reverse_seq_file, readout_file)
-    # run the model once with the parameters
-    parameter_file = 'parameters.txt'
-    parameters_dict = readParameters(parameter_file)
-    # results = createAndTrainBasicModel(processed_data, parameters_dict)
-    # results = createAndTrainVanillaCNN(processed_data, parameters_dict)
-    results = createAndTrainMultiCNN(processed_data, parameters_dict)
-    # results = createAndTrainMeuseumModel(processed_data, parameters_dict)
+    # processed_data = readInputData(train_forward_seq_file, train_reverse_seq_file, train_readout_file)
+    # print("Input size: " + str(processed_data['forward'].shape))
+    # # processed_data = readInputData(forward_seq_file, reverse_seq_file, readout_file)
+    # # run the model once with the parameters
+    # parameter_file = 'parameters.txt'
+    # parameters_dict = readParameters(parameter_file)
 
+    # createAndTrainModel(processed_data, parameters_dict, model_type)
 
     ### Prediction on the test data
-    # testModel(model_file, test_forward_seq_file, test_reverse_seq_file, test_readout_file)
+    testModel(model_file, model_type, test_forward_seq_file, test_reverse_seq_file, test_readout_file)
     
     
 
