@@ -201,11 +201,13 @@ class Model:
         pool_layer = Lambda(sumUp)(relu_layer_2)
         flat_layer = Flatten()(pool_layer)
 
-        dense_layer1 = Dense(32, activation=self.activation_type)(flat_layer)
+        dense_layer1 = Dense(64, activation=self.activation_type)(flat_layer)
+
+        dense_layer2 = Dense(32, activation=self.activation_type)(dense_layer1)
 
         # Binary classification with 2 output neurons
         output_layer = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l2(
-            0.001), activation='softmax')(dense_layer1)
+            0.001), activation='softmax')(dense_layer2)
 
         model = keras.Model(
             inputs=[forward_input, reverse_input], outputs=output_layer)
@@ -213,6 +215,7 @@ class Model:
                       optimizer='adam', metrics=['accuracy'])
 
         return model
+
 
     def create_Vanilla_CNN_model(self, sequence_shape, alpha=100, beta=0.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
         # input layers
@@ -246,7 +249,7 @@ class Model:
 
 
 
-    def create_Multi_CNN_model(self, sequence_shape, alpha=100, beta=0.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
+    def create_Multi_CNN2_model(self, sequence_shape, alpha=100, beta=0.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
         def sumUp(inputs):
             new_vals = tf.math.reduce_sum(inputs, axis=1, keepdims=True)
             return new_vals
@@ -258,10 +261,56 @@ class Model:
         conv_layer_1 = ConvolutionLayer(filters=self.filters, kernel_size=self.kernel_size,
                                         activation=self.activation_type, input_shape=(sequence_shape[1], sequence_shape[2]))(input_layer)
 
-        relu_layer_1 = ReLU()(pool_layer_1)
+        relu_layer_1 = ReLU()(conv_layer_1)
         conv_layer_2 = Conv1D(filters=self.filters//2, kernel_size=self.kernel_size,
                               activation=self.activation_type)(relu_layer_1)
-        relu_layer_2 = ReLU()(pool_layer_2)
+        relu_layer_2 = ReLU()(conv_layer_2)
+
+        # conv_layer_3 = Conv1D(filters=self.filters//2, kernel_size=self.kernel_size,
+        #                       activation=self.activation_type)(relu_layer_3)
+        # relu_layer_3 = ReLU()(conv_layer_3)
+
+        # conv_layer_4 = Conv1D(filters=self.filters//2, kernel_size=self.kernel_size,
+        #                       activation=self.activation_type)(relu_layer_3)
+        # relu_layer_4 = ReLU()(conv_layer_4)
+
+        # pool_layer = Lambda(sumUp)(relu_layer_4)
+
+        pool_layer = Lambda(sumUp)(relu_layer_2)
+        flat_layer = Flatten()(pool_layer)
+
+        dense_layer1 = Dense(64, activation=self.activation_type)(flat_layer)
+
+        dense_layer2 = Dense(32, activation=self.activation_type)(dense_layer1)
+
+        # Binary classification with 2 output neurons
+        output_layer = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l2(
+            0.001), activation='softmax')(dense_layer2)
+
+        model = keras.Model(
+            inputs=input_layer, outputs=output_layer)
+        model.compile(loss='binary_crossentropy',
+                      optimizer='adam', metrics=['accuracy'])
+
+        return model
+
+    
+    def create_Multi_CNN4_model(self, sequence_shape, alpha=100, beta=0.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
+        def sumUp(inputs):
+            new_vals = tf.math.reduce_sum(inputs, axis=1, keepdims=True)
+            return new_vals
+        pool_size_input = 4
+        # input layers
+        input_layer = keras.Input(
+            shape=(sequence_shape[1], sequence_shape[2]))
+
+        conv_layer_1 = ConvolutionLayer(filters=self.filters, kernel_size=self.kernel_size,
+                                        activation=self.activation_type, input_shape=(sequence_shape[1], sequence_shape[2]))(input_layer)
+
+        relu_layer_1 = ReLU()(conv_layer_1)
+        conv_layer_2 = Conv1D(filters=self.filters//2, kernel_size=self.kernel_size,
+                              activation=self.activation_type)(relu_layer_1)
+        relu_layer_2 = ReLU()(conv_layer_2)
 
         # conv_layer_3 = Conv1D(filters=self.filters//2, kernel_size=self.kernel_size,
         #                       activation=self.activation_type)(relu_layer_3)
@@ -436,9 +485,10 @@ class Model:
 
         print("\n=========================== Before model.fit ===================================")
         # Early stopping
-        callback = EarlyStopping(monitor='loss', min_delta=0.001, patience=3, verbose=0, mode='auto', baseline=None, restore_best_weights=False)
-        # train the data
-        model.fit({'forward': x1_train, 'reverse': x2_train}, y1_train, epochs=self.epochs, batch_size=self.batch_size, validation_split=0.1, verbose=2, callbacks=[callback])
+        # callback = EarlyStopping(monitor='loss', min_delta=0.001, patience=3, verbose=0, mode='auto', baseline=None, restore_best_weights=False)
+        # # train the data
+        # model.fit({'forward': x1_train, 'reverse': x2_train}, y1_train, epochs=self.epochs, batch_size=self.batch_size, validation_split=0.1, verbose=2, callbacks=[callback])
+        model.fit({'forward': x1_train, 'reverse': x2_train}, y1_train, epochs=self.epochs, batch_size=self.batch_size, validation_split=0.1, verbose=2)
         print("=========================== After model.fit ===================================\n")
         # Save the entire model as a SavedModel.
         # model.save('my_model')
@@ -523,29 +573,33 @@ class Model:
             # seed = random.randint(1,1000)
             seed = 527
 
-        x1_train, x1_test, y1_train, y1_test = train_test_split(
-            fw_fasta, readout, test_size=0.1, random_state=seed)
-        # split for reverse complemenet sequences
-        x2_train, x2_test, y2_train, y2_test = train_test_split(
-            rc_fasta, readout, test_size=0.1, random_state=seed)
+        input_data = np.concatenate((fw_fasta, rc_fasta), axis=0)
+        output_data = np.concatenate((readout, readout), axis=0)
+
+        train_input_data, test_input_data, train_output_data, test_output_data = train_test_split(
+            input_data, output_data, test_size=0.1, random_state=seed)
+
+        # x1_train, x1_test, y1_train, y1_test = train_test_split(
+        #     fw_fasta, readout, test_size=0.1, random_state=seed)
+        # # split for reverse complemenet sequences
+        # x2_train, x2_test, y2_train, y2_test = train_test_split(
+        #     rc_fasta, readout, test_size=0.1, random_state=seed)
 
         # if we want to merge two training dataset
         # comb = np.concatenate((y1_train, y2_train))
 
-        train_input_data = np.concatenate((x1_train, x2_train), axis=0)
-        train_output_data = np.concatenate((y1_train, y2_train), axis=0)
-        test_input_data = np.concatenate((x1_test, x2_test), axis=0)
-        test_output_data = np.concatenate((y1_test, y2_test), axis=0)
+        # train_input_data = np.concatenate((x1_train, x2_train), axis=0)
+        # train_output_data = np.concatenate((y1_train, y2_train), axis=0)
+        # test_input_data = np.concatenate((x1_test, x2_test), axis=0)
+        # test_output_data = np.concatenate((y1_test, y2_test), axis=0)
         # input_data = {'forward': x1_train, 'reverse': x2_train}
 
         # Change it to categorical values
         train_output_data_categorical = keras.utils.to_categorical(train_output_data, 2)
 
         print("\n=========================== Before model.fit ===================================")
-        # Early stopping
-        callback = EarlyStopping(monitor='loss', min_delta=0.001, patience=3, verbose=0, mode='auto', baseline=None, restore_best_weights=False)
         # train the data
-        model.fit(train_input_data, train_output_data_categorical, epochs=self.epochs, batch_size=self.batch_size, validation_split=0.1, verbose=2, callbacks=[callback])
+        model.fit(train_input_data, train_output_data_categorical, epochs=self.epochs, batch_size=self.batch_size, validation_split=0.1, verbose=2)
         print("=========================== After model.fit ===================================\n")
         # Save the entire model as a SavedModel.
         # model.save('my_model')

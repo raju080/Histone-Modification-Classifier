@@ -18,7 +18,7 @@ from ConvolutionLayer import ConvolutionLayer
 seed = 527
 total_seq_postfix = "_5000"
 # types: basic, meuseum, vanilla_cnn, multi_cnn
-model_type = 'multi_cnn'
+model_type = 'vanilla_cnn'
 # output file to save the model after training
 model_file = 'TrainedModels/model'+ total_seq_postfix + '_' + model_type + '.h5'
 
@@ -181,6 +181,7 @@ def testModel(model_file, model_type, forward_seq_file, reverse_seq_file, readou
     forward = processed_dict['forward']
     reverse = processed_dict['reverse']
     readout = processed_dict['readout']
+    print("Input size: " + str(processed_dict['forward'].shape))
     # Prediction on test data
     if model_type=='basic' or model_type=='meuseum':
         test_input_data = {'forward': forward, 'reverse': reverse}
@@ -195,6 +196,10 @@ def testModel(model_file, model_type, forward_seq_file, reverse_seq_file, readou
     pred_test = model.predict(test_input_data)
     # See which label has the highest confidence value
     predictions_test = np.argmax(pred_test, axis=1)
+
+    # print("test input size: " + str(test_input_data.shape))
+    # print("test output size: " + str(test_output_data.shape))
+    # print("prediction output size: " + str(predictions_test.shape))
 
     true_pred, false_pred = 0, 0
     for count, value in enumerate(predictions_test):
