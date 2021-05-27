@@ -299,42 +299,58 @@ class Model:
         def sumUp(inputs):
             new_vals = tf.math.reduce_sum(inputs, axis=1, keepdims=True)
             return new_vals
-        pool_size_input = 4
         # input layers
-        input_layer = keras.Input(
-            shape=(sequence_shape[1], sequence_shape[2]))
+        forward_input = keras.Input(
+            shape=(sequence_shape[1], sequence_shape[2]), name='forward')
+        reverse_input = keras.Input(
+            shape=(sequence_shape[1], sequence_shape[2]), name='reverse')
 
         conv_layer_1 = ConvolutionLayer(filters=self.filters, kernel_size=self.kernel_size,
-                                        activation=self.activation_type, input_shape=(sequence_shape[1], sequence_shape[2]))(input_layer)
+                                        activation=self.activation_type, input_shape=(sequence_shape[1], sequence_shape[2]))
+        conv_layer_1_fw = conv_layer_1(forward_input)
+        conv_layer_1_rs = conv_layer_1(reverse_input)
 
-        relu_layer_1 = ReLU()(conv_layer_1)
+        concat_layer = concatenate([conv_layer_1_fw, conv_layer_1_rs], axis=1)
+        relu_layer_1 = ReLU()(concat_layer)
+        # 
+        pool_layer_1 = MaxPooling1D(pool_size=2)(relu_layer_1)
         conv_layer_2 = Conv1D(filters=self.filters//2, kernel_size=self.kernel_size,
-                              activation=self.activation_type)(relu_layer_1)
+                              activation=self.activation_type)(pool_layer_1)
         relu_layer_2 = ReLU()(conv_layer_2)
+        pool_layer_2 = MaxPooling1D(pool_size=2)(relu_layer_2)
+        conv_layer_3 = Conv1D(filters=self.filters//4, kernel_size=self.kernel_size,
+                              activation=self.activation_type)(pool_layer_2)
+        relu_layer_3 = ReLU()(conv_layer_3)
+        pool_layer_3 = MaxPooling1D(pool_size=2)(relu_layer_3)
+        conv_layer_4 = Conv1D(filters=self.filters//8, kernel_size=self.kernel_size,
+                              activation=self.activation_type)(pool_layer_3)
+        relu_layer_4 = ReLU()(conv_layer_4)
 
-        # conv_layer_3 = Conv1D(filters=self.filters//2, kernel_size=self.kernel_size,
-        #                       activation=self.activation_type)(relu_layer_3)
+        # 
+        # conv_layer_2 = Conv1D(filters=self.filters//2, kernel_size=self.kernel_size,
+        #                       activation=self.activation_type)(relu_layer_1)
+        # relu_layer_2 = ReLU()(conv_layer_2)
+        # conv_layer_3 = Conv1D(filters=self.filters//4, kernel_size=self.kernel_size,
+        #                       activation=self.activation_type)(relu_layer_2)
         # relu_layer_3 = ReLU()(conv_layer_3)
-
-        # conv_layer_4 = Conv1D(filters=self.filters//2, kernel_size=self.kernel_size,
+        # conv_layer_4 = Conv1D(filters=self.filters//8, kernel_size=self.kernel_size,
         #                       activation=self.activation_type)(relu_layer_3)
         # relu_layer_4 = ReLU()(conv_layer_4)
+        # 
 
-        # pool_layer = Lambda(sumUp)(relu_layer_4)
-
-        pool_layer = Lambda(sumUp)(relu_layer_2)
+        pool_layer = Lambda(sumUp)(relu_layer_4)
         flat_layer = Flatten()(pool_layer)
 
         dense_layer1 = Dense(64, activation=self.activation_type)(flat_layer)
-
         dense_layer2 = Dense(32, activation=self.activation_type)(dense_layer1)
+        dense_layer3 = Dense(32, activation=self.activation_type)(dense_layer2)
 
         # Binary classification with 2 output neurons
         output_layer = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l2(
-            0.001), activation='softmax')(dense_layer2)
+            0.001), activation='softmax')(dense_layer3)
 
         model = keras.Model(
-            inputs=input_layer, outputs=output_layer)
+            inputs=[forward_input, reverse_input], outputs=output_layer)
         model.compile(loss='binary_crossentropy',
                       optimizer='adam', metrics=['accuracy'])
 
