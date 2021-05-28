@@ -40,6 +40,10 @@ from sklearn.metrics import r2_score
 from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score, KFold
 from sklearn.utils import shuffle
 
+import keras.layers as kl; 
+# from bpnet.losses import multinomial_nll
+
+
 from ConvolutionLayer import ConvolutionLayer
 
 # Reproducibility
@@ -305,7 +309,7 @@ class Model:
         reverse_input = keras.Input(
             shape=(sequence_shape[1], sequence_shape[2]), name='reverse')
 
-        conv_layer_1 = ConvolutionLayer(filters=self.filters, kernel_size=self.kernel_size,
+        conv_layer_1 = Conv1D(filters=self.filters, kernel_size=self.kernel_size,
                                         activation=self.activation_type, input_shape=(sequence_shape[1], sequence_shape[2]))
         conv_layer_1_fw = conv_layer_1(forward_input)
         conv_layer_1_rs = conv_layer_1(reverse_input)
@@ -355,6 +359,55 @@ class Model:
                       optimizer='adam', metrics=['accuracy'])
 
         return model
+
+
+    def create_bpnet_model(self, sequence_shape):
+        tasks = ['Oct4', 'Sox2', 'Nanog', 'Klf4']
+
+        # body
+        # input layers
+        forward_input = keras.Input(
+            shape=(sequence_shape[1], sequence_shape[2]), name='forward')
+        reverse_input = keras.Input(
+            shape=(sequence_shape[1], sequence_shape[2]), name='reverse')
+
+        conv_layer_1 = Conv1D(filters=64, kernel_size=25,
+                                        activation='relu', padding='same', input_shape=(sequence_shape[1], sequence_shape[2]))
+        conv_layer_1_fw = conv_layer_1(forward_input)
+        conv_layer_1_rs = conv_layer_1(reverse_input)
+
+        x = concatenate([conv_layer_1_fw, conv_layer_1_rs], axis=1)
+        # input = kl.Input(shape=(1000, 4))
+        # x = kl.Conv1D(64, kernel_size=25, padding='same', activation='relu')(input)
+        for i in range(1, 10):
+            conv_x = kl.Conv1D(64, kernel_size=3, padding='same',   activation='relu', dilation_rate=2**i)(x)
+            x = kl.add([conv_x, x])
+        bottleneck = x
+
+        # heads
+        # outputs = []
+        # for task in tasks:
+        # # profile shape head
+        #     px = kl.Reshape((-1, 1, 64))(bottleneck)
+        #     px = kl.Conv2DTranspose(2, kernel_size=(25, 1), padding='same')(px)
+        #     outputs.append(kl.Reshape((-1, 2))(px))
+        #     # total counts head
+        #     cx = kl.GlobalAvgPool1D()(bottleneck)
+        #     outputs.append(kl.Dense(2)(cx))
+
+        cx = kl.GlobalAvgPool1D()(bottleneck)
+        output_layer = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l2(
+            0.001), activation='softmax')(cx)
+
+        # model = keras.models.Model([input], outputs)
+        # model.compile(keras.optimizers.Adam(lr=0.004), loss=[multinomial_nll, 'mse'] * len(tasks), loss_weights=[1, 10] * len(tasks))
+        model = keras.Model(
+            inputs=[forward_input, reverse_input], outputs=output_layer)
+        model.compile(loss='binary_crossentropy',
+                      optimizer='adam', metrics=['accuracy'])
+        return model
+
+
 
 
     def create_LSTM_model(self, sequence_shape, alpha=100, beta=0.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
@@ -464,6 +517,80 @@ class Model:
         model.compile(loss='mean_squared_error', optimizer='adam', metrics = ['accuracy'])
         # model.compile(loss='binary_crossentropy', optimizer='adam', metrics = ['accuracy'])
         # model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy', auroc])
+
+        return model
+
+
+
+    def create_deepHistone_model(self, sequence_shape, alpha=100, beta=0.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
+        # input layers
+        forward_input = keras.Input(
+            shape=(sequence_shape[1], sequence_shape[2]), name='forward')
+        reverse_input = keras.Input(
+            shape=(sequence_shape[1], sequence_shape[2]), name='reverse')
+
+        conv_layer_1 = Conv1D(filters=128, kernel_size=9, padding='same', input_shape=(sequence_shape[1], sequence_shape[2]))
+        conv_layer_1_fw = conv_layer_1(forward_input)
+        conv_layer_1_rs = conv_layer_1(reverse_input)
+
+        concat = concatenate([conv_layer_1_fw, conv_layer_1_rs], axis=1)
+        # concat_relu = ReLU()(concat)
+        # DNA dense block
+        # basic block
+        batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(concat) 
+        relu_layer_1 = ReLU()(batch_norm_layer_1)
+        conv_layer_1 = Conv1D(filters=128, kernel_size=9)(relu_layer_1)
+        # basic block
+        batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(conv_layer_1) 
+        relu_layer_1 = ReLU()(batch_norm_layer_1)
+        conv_layer_1 = Conv1D(filters=128, kernel_size=9)(relu_layer_1)
+        # basic block
+        batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(conv_layer_1) 
+        relu_layer_1 = ReLU()(batch_norm_layer_1)
+        conv_layer_1 = Conv1D(filters=128, kernel_size=9)(relu_layer_1)
+
+        # pooling block
+        batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(conv_layer_1) 
+        relu_layer_1 = ReLU()(batch_norm_layer_1)
+        conv_layer_1 = Conv1D(filters=256, kernel_size=9)(relu_layer_1)
+        pool_layer = MaxPooling1D(pool_size=4, strides=4)(conv_layer_1)
+
+
+        # DNA dense block 2
+        # basic block
+        batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(pool_layer) 
+        relu_layer_1 = ReLU()(batch_norm_layer_1)
+        conv_layer_1 = Conv1D(filters=256, kernel_size=9)(relu_layer_1)
+        # basic block
+        batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(conv_layer_1) 
+        relu_layer_1 = ReLU()(batch_norm_layer_1)
+        conv_layer_1 = Conv1D(filters=256, kernel_size=9)(relu_layer_1)
+        # basic block
+        batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(conv_layer_1) 
+        relu_layer_1 = ReLU()(batch_norm_layer_1)
+        conv_layer_1 = Conv1D(filters=256, kernel_size=9)(relu_layer_1)
+
+        # pooling block
+        batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(conv_layer_1) 
+        relu_layer_1 = ReLU()(batch_norm_layer_1)
+        conv_layer_1 = Conv1D(filters=512, kernel_size=9)(relu_layer_1)
+        pool_layer = MaxPooling1D(pool_size=4, strides=4)(conv_layer_1)
+
+        # pool_layer = Lambda(sumUp)(relu_layer_2)
+        flat_layer = Flatten()(pool_layer)
+
+        dense_layer1 = Dense(925, activation=self.activation_type)(flat_layer)
+        batch_norm_layer_2 = BatchNormalization(epsilon=1e-05, momentum=0.1)(dense_layer1) 
+        relu_layer_2 = ReLU()(batch_norm_layer_2)
+        # dense_layer2 = Dense(32, activation=self.activation_type)(dense_layer1)
+
+        # Binary classification with 2 output neurons
+        output_layer = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l2(
+            0.001), activation='softmax')(relu_layer_2)
+
+        model = keras.Model(inputs=[forward_input, reverse_input], outputs=output_layer)
+        model.compile(loss='binary_crossentropy',
+                      optimizer='adam', metrics=['accuracy'])
 
         return model
 

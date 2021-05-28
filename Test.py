@@ -56,6 +56,10 @@ def readQTLs(file_path):
     print(qtl_df)
 
 
+def processForDeepHistone(inputFile):
+    pass
+
+
 def main():
     # neg_input_bed_file = 'Dataset/E118-H3K27ac_negSet.bed'
     # df = readBedFile(neg_input_bed_file)

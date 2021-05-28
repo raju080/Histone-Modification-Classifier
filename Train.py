@@ -16,9 +16,9 @@ from ConvolutionLayer import ConvolutionLayer
 
 # constants
 seed = 527
-total_seq_postfix = ""
-# types: basic, meuseum, vanilla_cnn, multi_cnn2, multi_cnn4
-model_type = 'basic'
+total_seq_postfix = "_200"
+# types: basic, meuseum, vanilla_cnn, multi_cnn2, multi_cnn4, bpnet, deephistone
+model_type = 'deephistone'
 # output file to save the model after training
 model_file = 'TrainedModels/model'+ total_seq_postfix + '_' + model_type + '.h5'
 
@@ -181,6 +181,40 @@ def createAndTrainMeuseumModel(processed_data, parameters_dict, model_file, alph
     return results
 
 
+def createAndTrainBpnetModel(processed_data, parameters_dict, model_file):
+    # initiate a model with the specified parameters
+    # seed = random.randint(1,1000)
+    seed = 527
+    model = Model(filters=parameters_dict["filters"], kernel_size=parameters_dict["kernel_size"], pool_type=parameters_dict["pool_type"], regularizer=parameters_dict["regularizer"],
+            activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
+    # creating the bpnet model
+    bpnet_model = model.create_bpnet_model(processed_data["forward"].shape)
+    bpnet_model.summary()
+    # running the model with the processed data
+    results = model.trainModel(bpnet_model, processed_data, seed)
+    # results = model.trainModelWithHardwareSupport(bpnet_model, processed_data, with_gpu=True)
+    bpnet_model.save(model_file)
+
+    return results
+
+
+def createAndTrainDeepHistoneModel(processed_data, parameters_dict, model_file):
+    # initiate a model with the specified parameters
+    # seed = random.randint(1,1000)
+    seed = 527
+    model = Model(filters=parameters_dict["filters"], kernel_size=parameters_dict["kernel_size"], pool_type=parameters_dict["pool_type"], regularizer=parameters_dict["regularizer"],
+            activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
+    # creating the bpnet model
+    dhistone_model = model.create_deepHistone_model(processed_data["forward"].shape)
+    dhistone_model.summary()
+    # running the model with the processed data
+    results = model.trainModel(dhistone_model, processed_data, seed)
+    # results = model.trainModelWithHardwareSupport(dhistone_model, processed_data, with_gpu=True)
+    dhistone_model.save(model_file)
+
+    return results
+
+
 def createAndTrainModel(processed_data, parameters_dict, model_type):
     if model_type=='basic':
         results = createAndTrainBasicModel(processed_data, parameters_dict, model_file)
@@ -192,6 +226,11 @@ def createAndTrainModel(processed_data, parameters_dict, model_type):
         results = createAndTrainMultiCNN2(processed_data, parameters_dict, model_file)
     elif model_type=='multi_cnn4':
         results = createAndTrainMultiCNN4(processed_data, parameters_dict, model_file)
+    elif model_type=='bpnet':
+        results = createAndTrainBpnetModel(processed_data, parameters_dict, model_file)
+    elif model_type=='deephistone':
+        results = createAndTrainDeepHistoneModel(processed_data, parameters_dict, model_file)
+
     return results
 
 
@@ -204,7 +243,7 @@ def testModel(model_file, model_type, forward_seq_file, reverse_seq_file, readou
     readout = processed_dict['readout']
     print("Input size: " + str(processed_dict['forward'].shape))
     # Prediction on test data
-    if model_type=='basic' or model_type=='meuseum' or model_type=='multi_cnn4':
+    if model_type=='basic' or model_type=='meuseum' or model_type=='multi_cnn4' or model_type=='deephistone' or model_type=='bpnet':
         test_input_data = {'forward': forward, 'reverse': reverse}
         test_output_data = readout
     elif model_type=='vanilla_cnn' or model_type=='multi_cnn2':
