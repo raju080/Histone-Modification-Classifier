@@ -11,7 +11,7 @@ class ConvolutionLayer(Conv1D):
                  beta=0.01,
                  bkg_const=[0.25, 0.25, 0.25, 0.25],
                  padding='valid',
-                 activation="relu",
+                 activation=None,
                  use_bias=False,
                  kernel_initializer='glorot_uniform',
                  __name__='ConvolutionLayer',
@@ -29,7 +29,7 @@ class ConvolutionLayer(Conv1D):
         self.run_value = 1
 
     def call(self, inputs):
-        print("self.run value is", self.run_value)
+        # print("self.run value is", self.run_value)
         if self.run_value > 2:
             x_tf = self.kernel  # x_tf after reshaping is a tensor and not a weight variable :(
             x_tf = tf.transpose(x_tf, [2, 0, 1])
@@ -37,6 +37,15 @@ class ConvolutionLayer(Conv1D):
             self.beta = 1/self.alpha
             bkg = tf.constant(self.bkg_const)
             bkg_tf = tf.cast(bkg, tf.float32)
+
+            # print('\n---------------debug---------------\n')
+            # print(x_tf[0])
+            # print(tf.scalar_mul(100, x_tf[0]))
+            # print(tf.math.reduce_max(tf.math.scalar_mul(self.alpha, x_tf[0]), axis=1))
+            # print(tf.expand_dims(
+            #                         tf.math.reduce_max(tf.math.scalar_mul(self.alpha, x_tf[0]), axis=1), axis=1
+            #                     ),)
+            # print('\n---------------debug---------------\n')
             # filt_list = tf.map_fn(lambda x: tf.math.scalar_mul(self.beta, tf.subtract(tf.subtract(tf.subtract(tf.math.scalar_mul(self.alpha, x), tf.expand_dims(tf.math.reduce_max(tf.math.scalar_mul(self.alpha, x), axis = 1), axis = 1)), tf.expand_dims(tf.math.log(tf.math.reduce_sum(tf.math.exp(tf.subtract(tf.math.scalar_mul(self.alpha, x), tf.expand_dims(tf.math.reduce_max(tf.math.scalar_mul(self.alpha, x), axis = 1), axis = 1))), axis = 1)), axis = 1)), tf.math.log(tf.reshape(tf.tile(bkg_tf, [tf.shape(x)[0]]), [tf.shape(x)[0], tf.shape(bkg_tf)[0]])))), x_tf)
             filt_list = tf.map_fn(
                 lambda x: tf.math.scalar_mul(
@@ -134,7 +143,6 @@ class ConvolutionLayer(Conv1D):
             # type of transf is <class 'tensorflow.python.framework.ops.Tensor'>
             # type of outputs is <class 'tensorflow.python.framework.ops.Tensor'>
             outputs = self._convolution_op(inputs, transf)
-
         else:
             outputs = self._convolution_op(inputs, self.kernel)
 

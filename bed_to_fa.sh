@@ -18,7 +18,10 @@ do
 
   # echo "$f"
   # echo "$output_file"
-	bedtools getfasta -fi $ref_genome -bed $f -fo $output_file
+  if [ ! -f $output_file ]; then
+    bedtools getfasta -fi $ref_genome -bed $f -fo $output_file
+  fi
+	
 done
 
 

@@ -25,11 +25,11 @@ from keras.models import Model
 
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, AveragePooling1D, BatchNormalization, Activation, concatenate, ReLU, Add
-from tensorflow.keras import backend as K, regularizers
+from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, AveragePooling1D, BatchNormalization, concatenate, ReLU, Activation, LeakyReLU, TimeDistributed, Reshape, Bidirectional, LSTM, GRU
+from tensorflow.keras import backend as K, regularizers, activations
 from tensorflow.keras.wrappers.scikit_learn import KerasRegressor
 from tensorflow.keras.wrappers.scikit_learn import KerasRegressor
-from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras.layers import Lambda
 from tensorflow import keras
 
@@ -40,7 +40,7 @@ from sklearn.metrics import r2_score
 from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score, KFold
 from sklearn.utils import shuffle
 
-import keras.layers as kl; 
+import keras.layers as kl
 # from bpnet.losses import multinomial_nll
 
 
@@ -80,7 +80,6 @@ class Model:
         print(
             "============================================================================\n")
 
-
     def create_meuseum_model(self, dims, alpha=100, beta=0.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
         # different metric functions
         def coeff_determination(y_true, y_pred):
@@ -101,23 +100,24 @@ class Model:
         #first_layer = Conv1D(filters=self.filters, kernel_size=self.kernel_size, data_format='channels_last', input_shape=(dims[1],dims[2]), use_bias = False)
         # with trainable = False
         #first_layer = Conv1D(filters=self.filters, kernel_size=self.kernel_size, kernel_initializer = my_init, data_format='channels_last', input_shape=(dims[1],dims[2]), use_bias = False, trainable=False)
-        first_layer = ConvolutionLayer(filters=self.filters, kernel_size=self.kernel_size, activation=self.activation_type,
+        first_layer = ConvolutionLayer(filters=self.filters, kernel_size=self.kernel_size,
                                        alpha=alpha, beta=beta, bkg_const=bkg_const, data_format='channels_last', use_bias=True)
 
         fw = first_layer(forward_input)
         bw = first_layer(reverse_input)
 
         concat = concatenate([fw, bw], axis=1)
-        print("Concat shape-----------------", concat.shape)
-        pool_size_input = concat.shape[1]
-        print("pool_size_input--------------", pool_size_input)
+        pool_size_input = 4
         concat_relu = ReLU()(concat)
+        # concat_relu = Activation(activation=activations.relu)(concat)
+        # concat_relu = Activation(activation=activations.linear)(concat)
         #concat = Dense(1, activation= 'sigmoid')(concat)
 
         if self.pool_type == 'Max':
-            pool_layer = MaxPooling1D(pool_size=pool_size_input)(concat)
+            pool_layer = MaxPooling1D(pool_size=pool_size_input)(concat_relu)
         elif self.pool_type == 'Ave':
-            pool_layer = AveragePooling1D(pool_size=pool_size_input)(concat)
+            pool_layer = AveragePooling1D(
+                pool_size=pool_size_input)(concat_relu)
         elif self.pool_type == 'Custom':
             def out_shape(input_shape):
                 shape = list(input_shape)
@@ -151,7 +151,7 @@ class Model:
 
         flat = Flatten()(pool_layer)
 
-        after_flat = Dense(32)(flat)
+        after_flat = Dense(64)(flat)
 
         # Binary classification with 2 output neurons
         if self.regularizer == 'L_1':
@@ -179,39 +179,50 @@ class Model:
 
         return model
 
-
     def create_basic_model(self, sequence_shape):
         def sumUp(inputs):
             new_vals = tf.math.reduce_sum(inputs, axis=1, keepdims=True)
             return new_vals
+        def top_k(inputs, k):
+            # tf.nn.top_k Finds values and indices of the k largest entries for the last dimension
+            inputs2 = tf.transpose(inputs, [0, 2, 1])
+            new_vals = tf.nn.top_k(inputs2, k=k, sorted=True).values
+            # transform back to (None, 10, 512)
+            return tf.transpose(new_vals, [0, 2, 1])
+
         # input layers
         forward_input = keras.Input(
             shape=(sequence_shape[1], sequence_shape[2]), name='forward')
         reverse_input = keras.Input(
             shape=(sequence_shape[1], sequence_shape[2]), name='reverse')
 
-        conv_layer_1 = ConvolutionLayer(filters=self.filters, kernel_size=self.kernel_size,
-                                        activation=self.activation_type, input_shape=(sequence_shape[1], sequence_shape[2]))
+        conv_layer_1 = ConvolutionLayer(filters=self.filters, kernel_size=self.kernel_size, strides=1,
+                                        input_shape=(sequence_shape[1], sequence_shape[2]))
         conv_layer_1_fw = conv_layer_1(forward_input)
         conv_layer_1_rs = conv_layer_1(reverse_input)
 
         concat_layer = concatenate([conv_layer_1_fw, conv_layer_1_rs], axis=1)
         relu_layer = ReLU()(concat_layer)
+        # relu_layer = Activation(activation=activations.tanh)(concat_layer)
+        # pool_layer = Lambda(sumUp)(relu_layer)
+        # pool_layer = MaxPooling1D(pool_size=2)(relu_layer)
 
-        conv_layer_2 = Conv1D(filters=self.filters//2, kernel_size=self.kernel_size,
-                              activation=self.activation_type)(relu_layer)
+        conv_layer_2 = Conv1D(filters=self.filters//2,
+                              kernel_size=self.kernel_size, strides=1)(relu_layer)
         relu_layer_2 = ReLU()(conv_layer_2)
 
         pool_layer = Lambda(sumUp)(relu_layer_2)
+        # pool_layer = Lambda(top_k, arguments={'k': 10})(relu_layer_2)
+        # pool_layer = MaxPooling1D(pool_size=2)(relu_layer_2)
         flat_layer = Flatten()(pool_layer)
 
-        dense_layer1 = Dense(64, activation=self.activation_type)(flat_layer)
+        dense_layer = Dense(64, activation=activations.relu)(flat_layer)
 
-        dense_layer2 = Dense(32, activation=self.activation_type)(dense_layer1)
+        # dense_layer = Dense(32, activation=activations.relu)(dense_layer)
 
         # Binary classification with 2 output neurons
         output_layer = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l2(
-            0.001), activation='softmax')(dense_layer2)
+            0.001), activation='softmax')(dense_layer)
 
         model = keras.Model(
             inputs=[forward_input, reverse_input], outputs=output_layer)
@@ -219,7 +230,6 @@ class Model:
                       optimizer='adam', metrics=['accuracy'])
 
         return model
-
 
     def create_Vanilla_CNN_model(self, sequence_shape, alpha=100, beta=0.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
         # input layers
@@ -232,7 +242,7 @@ class Model:
 
         conv_layer_1 = ConvolutionLayer(filters=self.filters, kernel_size=self.kernel_size,
                                         activation=self.activation_type, input_shape=(sequence_shape[1], sequence_shape[2]))(input_layer)
-    
+
         relu_layer = ReLU()(conv_layer_1)
         pool_layer = Lambda(sumUp)(relu_layer)
         flat_layer = Flatten()(pool_layer)
@@ -249,9 +259,6 @@ class Model:
                       optimizer='adam', metrics=['accuracy'])
 
         return model
-
-
-
 
     def create_Multi_CNN2_model(self, sequence_shape, alpha=100, beta=0.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
         def sumUp(inputs):
@@ -298,7 +305,6 @@ class Model:
 
         return model
 
-    
     def create_Multi_CNN4_model(self, sequence_shape, alpha=100, beta=0.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
         def sumUp(inputs):
             new_vals = tf.math.reduce_sum(inputs, axis=1, keepdims=True)
@@ -310,13 +316,13 @@ class Model:
             shape=(sequence_shape[1], sequence_shape[2]), name='reverse')
 
         conv_layer_1 = Conv1D(filters=self.filters, kernel_size=self.kernel_size,
-                                        activation=self.activation_type, input_shape=(sequence_shape[1], sequence_shape[2]))
+                              activation=self.activation_type, input_shape=(sequence_shape[1], sequence_shape[2]))
         conv_layer_1_fw = conv_layer_1(forward_input)
         conv_layer_1_rs = conv_layer_1(reverse_input)
 
         concat_layer = concatenate([conv_layer_1_fw, conv_layer_1_rs], axis=1)
         relu_layer_1 = ReLU()(concat_layer)
-        # 
+        #
         pool_layer_1 = MaxPooling1D(pool_size=2)(relu_layer_1)
         conv_layer_2 = Conv1D(filters=self.filters//2, kernel_size=self.kernel_size,
                               activation=self.activation_type)(pool_layer_1)
@@ -330,7 +336,7 @@ class Model:
                               activation=self.activation_type)(pool_layer_3)
         relu_layer_4 = ReLU()(conv_layer_4)
 
-        # 
+        #
         # conv_layer_2 = Conv1D(filters=self.filters//2, kernel_size=self.kernel_size,
         #                       activation=self.activation_type)(relu_layer_1)
         # relu_layer_2 = ReLU()(conv_layer_2)
@@ -340,7 +346,7 @@ class Model:
         # conv_layer_4 = Conv1D(filters=self.filters//8, kernel_size=self.kernel_size,
         #                       activation=self.activation_type)(relu_layer_3)
         # relu_layer_4 = ReLU()(conv_layer_4)
-        # 
+        #
 
         pool_layer = Lambda(sumUp)(relu_layer_4)
         flat_layer = Flatten()(pool_layer)
@@ -360,7 +366,6 @@ class Model:
 
         return model
 
-
     def create_bpnet_model(self, sequence_shape):
         tasks = ['Oct4', 'Sox2', 'Nanog', 'Klf4']
 
@@ -372,7 +377,7 @@ class Model:
             shape=(sequence_shape[1], sequence_shape[2]), name='reverse')
 
         conv_layer_1 = Conv1D(filters=64, kernel_size=25,
-                                        activation='relu', padding='same', input_shape=(sequence_shape[1], sequence_shape[2]))
+                              activation='relu', padding='same', input_shape=(sequence_shape[1], sequence_shape[2]))
         conv_layer_1_fw = conv_layer_1(forward_input)
         conv_layer_1_rs = conv_layer_1(reverse_input)
 
@@ -380,7 +385,8 @@ class Model:
         # input = kl.Input(shape=(1000, 4))
         # x = kl.Conv1D(64, kernel_size=25, padding='same', activation='relu')(input)
         for i in range(1, 10):
-            conv_x = kl.Conv1D(64, kernel_size=3, padding='same',   activation='relu', dilation_rate=2**i)(x)
+            conv_x = kl.Conv1D(64, kernel_size=3, padding='same',
+                               activation='relu', dilation_rate=2**i)(x)
             x = kl.add([conv_x, x])
         bottleneck = x
 
@@ -407,24 +413,25 @@ class Model:
                       optimizer='adam', metrics=['accuracy'])
         return model
 
-
-
-
     def create_LSTM_model(self, sequence_shape, alpha=100, beta=0.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
         # input layers
-        forward_input = keras.Input(shape=(sequence_shape[1],sequence_shape[2]), name = 'forward')
-        reverse_input = keras.Input(shape=(sequence_shape[1],sequence_shape[2]), name = 'reverse')
-        print("Forward shape----------------",forward_input)
-        print("Reverse shape----------------",reverse_input)
+        forward_input = keras.Input(
+            shape=(sequence_shape[1], sequence_shape[2]), name='forward')
+        reverse_input = keras.Input(
+            shape=(sequence_shape[1], sequence_shape[2]), name='reverse')
+        print("Forward shape----------------", forward_input)
+        print("Reverse shape----------------", reverse_input)
         model = Sequential()
         n_features = 512
         n_neurons = 5
-        first_layer = LSTM(n_neurons, return_sequences =True, input_shape=(sequence_shape[1],sequence_shape[2],n_features))
+        first_layer = LSTM(n_neurons, return_sequences=True, input_shape=(
+            sequence_shape[1], sequence_shape[2], n_features))
         fw = first_layer(forward_input)
         bw = first_layer(reverse_input)
         x = concatenate([fw, bw], axis=1)
         # x = Dense(n_features,activation="sigmoid")(x)
-        second_layer = LSTM(n_neurons*2, input_shape=(x.shape[1],x.shape[2],n_features/2))
+        second_layer = LSTM(
+            n_neurons*2, input_shape=(x.shape[1], x.shape[2], n_features/2))
         x = second_layer(x)
         flat = Flatten()(x)
         # model.add(flat)
@@ -433,60 +440,75 @@ class Model:
 
         # Binary classification with 2 output neurons
         if self.regularizer == 'L_1':
-            outputs = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l1(0.001), activation= 'sigmoid')(after_flat)
+            outputs = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l1(
+                0.001), activation='sigmoid')(after_flat)
         elif self.regularizer == 'L_2':
-            outputs = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l2(0.001), activation= 'sigmoid')(after_flat)
+            outputs = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l2(
+                0.001), activation='sigmoid')(after_flat)
         else:
             raise NameError('Set the regularizer name correctly')
         # model.add(outputs)
 
-        #weight_forwardin_0=model.layers[0].get_weights()[0]
-        #print(weight_forwardin_0)
+        # weight_forwardin_0=model.layers[0].get_weights()[0]
+        # print(weight_forwardin_0)
         # print("creating the model")
-        model = keras.Model(inputs=[forward_input, reverse_input], outputs=outputs)
+        model = keras.Model(
+            inputs=[forward_input, reverse_input], outputs=outputs)
 
-        model.compile(loss='mean_squared_error', optimizer='adam', metrics = ['accuracy'])
+        model.compile(loss='mean_squared_error',
+                      optimizer='adam', metrics=['accuracy'])
         # model.compile(loss='binary_crossentropy', optimizer='adam', metrics = ['accuracy'])
         # model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy', auroc])
 
         return model
 
     def create_CNNLSTM_model(self, sequence_shape, alpha=100, beta=0.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
-        # input layers
-        forward_input = keras.Input(shape=(sequence_shape[1],sequence_shape[2]), name = 'forward')
-        reverse_input = keras.Input(shape=(sequence_shape[1],sequence_shape[2]), name = 'reverse')
-        print("Forward shape----------------",forward_input)
-        print("Reverse shape----------------",reverse_input)
-        model = Sequential()
+        def sumUp(inputs):
+            new_vals = tf.math.reduce_sum(inputs, axis=1, keepdims=True)
+            return new_vals
 
-        first_layer = Conv1D(filters=self.filters/2, kernel_size=self.kernel_size, activation=self.activation_type, input_shape=(sequence_shape[1],sequence_shape[2]))
-        print(first_layer)
-        first_layer = TimeDistributed(first_layer)
-        print(first_layer)
-        fw = first_layer(forward_input)
-        bw = first_layer(reverse_input)
-        print("after Conv1D fw shape----------------",fw.shape)
-        print("after Conv1D bw shape----------------",bw.shape)
-        concat = concatenate([fw, bw], axis=1)
-        print("Concat shape-----------------",concat.shape)
+        def top_k(inputs, k):
+            # tf.nn.top_k Finds values and indices of the k largest entries for the last dimension
+            print(inputs.shape)
+            inputs2 = tf.transpose(inputs, [0, 2, 1])
+            new_vals = tf.nn.top_k(inputs2, k=k, sorted=True).values
+            # transform back to (None, 10, 512)
+            return tf.transpose(new_vals, [0, 2, 1])
+
+        # input layers
+        forward_input = keras.Input(
+            shape=(sequence_shape[1], sequence_shape[2]), name='forward')
+        reverse_input = keras.Input(
+            shape=(sequence_shape[1], sequence_shape[2]), name='reverse')
+
+        conv_layer_1 = ConvolutionLayer(filters=self.filters, kernel_size=self.kernel_size, strides=1,
+                                        input_shape=(sequence_shape[1], sequence_shape[2]))
+        conv_layer_1_fw = conv_layer_1(forward_input)
+        conv_layer_1_rs = conv_layer_1(reverse_input)
+
+        concat_layer = concatenate([conv_layer_1_fw, conv_layer_1_rs], axis=1)
+        relu_layer = ReLU()(concat_layer)
         # pool_size_input = concat.shape[1]
-        #model.add(first_layer)
+        # model.add(first_layer)
         # pool_size_input = 5
-        pool_size_input = 2
-        if self.pool_type == 'Max':
-            pool_layer = TimeDistributed(MaxPooling1D(pool_size=pool_size_input))(concat)
-        elif self.pool_type == 'Ave':
-            pool_layer = TimeDistributed(AveragePooling1D(pool_size=pool_size_input))(concat)
-        else:
-            raise NameError('Set the pooling layer name correctly')
-        # model.add(pool_layer)
-        print("After Maxpooling shape-----------------",pool_layer.shape)
-        second_layer = TimeDistributed(Conv1D(filters=self.filters, kernel_size=self.kernel_size, activation=self.activation_type, input_shape=(pool_layer.shape[1],pool_layer.shape[2])))
-        x = second_layer(pool_layer)
-        print("after Conv1D x shape----------------",x.shape)
+        pool_layer = MaxPooling1D(pool_size=2)(relu_layer)
+        conv_layer_2 = Conv1D(filters=self.filters//2,
+                              kernel_size=self.kernel_size, strides=1)(pool_layer)
+        
+        # relu_layer_2 = ReLU()(conv_layer_2)
+        # pool_layer = Lambda(sumUp)(relu_layer_2)
+        # pool_layer = Lambda(top_k, arguments={'k': 2})(relu_layer_2)
+        # pool_layer = MaxPooling1D(pool_size=4)(relu_layer_2)
+
+        # flat = Bidirectional(LSTM(256))(pool_layer)
+
+        # print("after Conv1D x shape----------------",x.shape)
         # x = MaxPooling1D(pool_size=x.shape[1])(x)
-        x = TimeDistributed(MaxPooling1D(pool_size=5))(x)
-        print("after MaxPooling x shape----------------",x.shape)
+        relu_layer = ReLU()(conv_layer_2)
+        pool_layer = Lambda(top_k, arguments={'k': 10})(relu_layer)
+        # pool_layer = MaxPooling1D(pool_size=4)(relu_layer)
+        pool_layer = Reshape((1, pool_layer.shape[1], pool_layer.shape[2]))(pool_layer)
+        # print("after MaxPooling x shape----------------",x.shape)
 
         # third_layer = TimeDistributed(Conv1D(filters=self.filters*2, kernel_size=self.kernel_size, activation=self.activation_type, input_shape=(x.shape[1],x.shape[2])))
         # x = third_layer(x)
@@ -494,42 +516,51 @@ class Model:
         # x = TimeDistributed(MaxPooling1D(pool_size=x.shape[1]))(x)
         # print("after MaxPooling x shape----------------",x.shape)
 
-        flat = TimeDistributed(Flatten())(x)
-        # flat = LSTM(4)(flat)
+        flat = TimeDistributed(Flatten())(pool_layer)
+        # flat = Bidirectional(LSTM(512))(flat)
+
+        # # flat = Dropout(0.2)(flat)
+        # # flat = LSTM(256,return_sequences=True)(flat)
+        flat = Bidirectional(LSTM(256))(flat)
         # model.add(flat)
-        after_flat = Dense(32, activation=self.activation_type)(flat)
-        # model.add(after_flat)
+        # after_flat = Dense(128, activation=self.activation_type)(flat)
+        after_flat = Dense(128, activation=self.activation_type)(flat)
 
         # Binary classification with 2 output neurons
         if self.regularizer == 'L_1':
-            outputs = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l1(0.001), activation= 'sigmoid')(after_flat)
+            outputs = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l1(
+                0.001), activation='softmax')(after_flat)
         elif self.regularizer == 'L_2':
-            outputs = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l2(0.001), activation= 'sigmoid')(after_flat)
+            outputs = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l2(
+                0.001), activation='softmax')(after_flat)
         else:
             raise NameError('Set the regularizer name correctly')
         # model.add(outputs)
 
-        #weight_forwardin_0=model.layers[0].get_weights()[0]
-        #print(weight_forwardin_0)
+        # weight_forwardin_0=model.layers[0].get_weights()[0]
+        # print(weight_forwardin_0)
         # print("creating the model")
-        model = keras.Model(inputs=[forward_input, reverse_input], outputs=outputs)
+        model = keras.Model(
+            inputs=[forward_input, reverse_input], outputs=outputs)
 
-        model.compile(loss='mean_squared_error', optimizer='adam', metrics = ['accuracy'])
+        model.compile(loss='binary_crossentropy',
+                      optimizer='adam', metrics=['accuracy'])
         # model.compile(loss='binary_crossentropy', optimizer='adam', metrics = ['accuracy'])
         # model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy', auroc])
 
         return model
 
-
-
     def create_deepHistone_model(self, sequence_shape, alpha=100, beta=0.01, bkg_const=[0.25, 0.25, 0.25, 0.25]):
+        # batch size = 20
+
         # input layers
         forward_input = keras.Input(
             shape=(sequence_shape[1], sequence_shape[2]), name='forward')
         reverse_input = keras.Input(
             shape=(sequence_shape[1], sequence_shape[2]), name='reverse')
 
-        conv_layer_1 = Conv1D(filters=128, kernel_size=9, padding='same', input_shape=(sequence_shape[1], sequence_shape[2]))
+        conv_layer_1 = Conv1D(filters=128, kernel_size=9, padding='same', input_shape=(
+            sequence_shape[1], sequence_shape[2]))
         conv_layer_1_fw = conv_layer_1(forward_input)
         conv_layer_1_rs = conv_layer_1(reverse_input)
 
@@ -537,50 +568,54 @@ class Model:
         # concat_relu = ReLU()(concat)
         # DNA dense block
         # basic block
-        batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(concat) 
+        batch_norm_layer_1 = BatchNormalization(
+            epsilon=1e-05, momentum=0.1)(concat)
         relu_layer_1 = ReLU()(batch_norm_layer_1)
         conv_layer_1 = Conv1D(filters=128, kernel_size=9)(relu_layer_1)
         # basic block
-        batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(conv_layer_1) 
+        batch_norm_layer_1 = BatchNormalization(
+            epsilon=1e-05, momentum=0.1)(conv_layer_1)
         relu_layer_1 = ReLU()(batch_norm_layer_1)
         conv_layer_1 = Conv1D(filters=128, kernel_size=9)(relu_layer_1)
         # basic block
-        batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(conv_layer_1) 
+        batch_norm_layer_1 = BatchNormalization(
+            epsilon=1e-05, momentum=0.1)(conv_layer_1)
         relu_layer_1 = ReLU()(batch_norm_layer_1)
         conv_layer_1 = Conv1D(filters=128, kernel_size=9)(relu_layer_1)
 
         # pooling block
-        batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(conv_layer_1) 
+        batch_norm_layer_1 = BatchNormalization(
+            epsilon=1e-05, momentum=0.1)(conv_layer_1)
         relu_layer_1 = ReLU()(batch_norm_layer_1)
         conv_layer_1 = Conv1D(filters=256, kernel_size=9)(relu_layer_1)
         pool_layer = MaxPooling1D(pool_size=4, strides=4)(conv_layer_1)
-
 
         # DNA dense block 2
         # basic block
-        batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(pool_layer) 
-        relu_layer_1 = ReLU()(batch_norm_layer_1)
-        conv_layer_1 = Conv1D(filters=256, kernel_size=9)(relu_layer_1)
-        # basic block
-        batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(conv_layer_1) 
-        relu_layer_1 = ReLU()(batch_norm_layer_1)
-        conv_layer_1 = Conv1D(filters=256, kernel_size=9)(relu_layer_1)
-        # basic block
-        batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(conv_layer_1) 
-        relu_layer_1 = ReLU()(batch_norm_layer_1)
-        conv_layer_1 = Conv1D(filters=256, kernel_size=9)(relu_layer_1)
+        # batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(pool_layer)
+        # relu_layer_1 = ReLU()(batch_norm_layer_1)
+        # conv_layer_1 = Conv1D(filters=256, kernel_size=9)(relu_layer_1)
+        # # basic block
+        # batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(conv_layer_1)
+        # relu_layer_1 = ReLU()(batch_norm_layer_1)
+        # conv_layer_1 = Conv1D(filters=256, kernel_size=9)(relu_layer_1)
+        # # basic block
+        # batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(conv_layer_1)
+        # relu_layer_1 = ReLU()(batch_norm_layer_1)
+        # conv_layer_1 = Conv1D(filters=256, kernel_size=9)(relu_layer_1)
 
-        # pooling block
-        batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(conv_layer_1) 
-        relu_layer_1 = ReLU()(batch_norm_layer_1)
-        conv_layer_1 = Conv1D(filters=512, kernel_size=9)(relu_layer_1)
-        pool_layer = MaxPooling1D(pool_size=4, strides=4)(conv_layer_1)
+        # # pooling block
+        # batch_norm_layer_1 = BatchNormalization(epsilon=1e-05, momentum=0.1)(conv_layer_1)
+        # relu_layer_1 = ReLU()(batch_norm_layer_1)
+        # conv_layer_1 = Conv1D(filters=512, kernel_size=9)(relu_layer_1)
+        # pool_layer = MaxPooling1D(pool_size=4, strides=4)(conv_layer_1)
 
         # pool_layer = Lambda(sumUp)(relu_layer_2)
         flat_layer = Flatten()(pool_layer)
 
         dense_layer1 = Dense(925, activation=self.activation_type)(flat_layer)
-        batch_norm_layer_2 = BatchNormalization(epsilon=1e-05, momentum=0.1)(dense_layer1) 
+        batch_norm_layer_2 = BatchNormalization(
+            epsilon=1e-05, momentum=0.1)(dense_layer1)
         relu_layer_2 = ReLU()(batch_norm_layer_2)
         # dense_layer2 = Dense(32, activation=self.activation_type)(dense_layer1)
 
@@ -588,14 +623,89 @@ class Model:
         output_layer = Dense(2, kernel_initializer='normal', kernel_regularizer=regularizers.l2(
             0.001), activation='softmax')(relu_layer_2)
 
-        model = keras.Model(inputs=[forward_input, reverse_input], outputs=output_layer)
+        model = keras.Model(
+            inputs=[forward_input, reverse_input], outputs=output_layer)
         model.compile(loss='binary_crossentropy',
                       optimizer='adam', metrics=['accuracy'])
 
         return model
 
 
-    def trainModel(self, model, processed_dict, seed=0):
+    def createSiameseNetwork(self, embedding_network, sequence_shape):
+        def euclidean_distance(vects):
+            """Find the Euclidean distance between two vectors.
+            Arguments:
+                vects: List containing two tensors of same length.
+            Returns:
+                Tensor containing euclidean distance
+                (as floating point value) between vectors.
+            """
+            x, y = vects
+            sum_square = tf.math.reduce_sum(tf.math.square(x - y), axis=1, keepdims=True)
+            return tf.math.sqrt(tf.math.maximum(sum_square, tf.keras.backend.epsilon()))
+
+        def loss(margin=1):
+            """Provides 'constrastive_loss' an enclosing scope with variable 'margin'.
+
+            Arguments:
+                margin: Integer, defines the baseline for distance for which pairs
+                        should be classified as dissimilar. - (default is 1).
+
+            Returns:
+                'constrastive_loss' function with data ('margin') attached.
+            """
+
+            # Contrastive loss = mean( (1-true_value) * square(prediction) +
+            #                         true_value * square( max(margin-prediction, 0) ))
+            def contrastive_loss(y_true, y_pred):
+                """Calculates the constrastive loss.
+
+                Arguments:
+                    y_true: List of labels, each label is of type float32.
+                    y_pred: List of predictions of same length as of y_true,
+                            each label is of type float32.
+
+                Returns:
+                    A tensor containing constrastive loss as floating point value.
+                """
+                y_true = tf.cast(y_true, tf.float32)
+                square_pred = tf.math.square(y_pred)
+                margin_square = tf.math.square(tf.math.maximum(margin - (y_pred), 0))
+                return tf.math.reduce_mean(
+                    (1 - y_true) * square_pred + (y_true) * margin_square
+                )
+
+            return contrastive_loss
+        
+
+        forward_input1 = keras.Input(
+            shape=(sequence_shape[2], sequence_shape[3]), name='forward1')
+        reverse_input1 = keras.Input(
+            shape=(sequence_shape[2], sequence_shape[3]), name='reverse1')
+        input_1 = [forward_input1, reverse_input1]
+
+        forward_input2 = keras.Input(
+            shape=(sequence_shape[2], sequence_shape[3]), name='forward2')
+        reverse_input2 = keras.Input(
+            shape=(sequence_shape[2], sequence_shape[3]), name='reverse2')
+        input_2 = [forward_input2, reverse_input2]
+
+        tower_1 = embedding_network(input_1)
+        tower_2 = embedding_network(input_2)
+
+        merge_layer = Lambda(euclidean_distance)([tower_1, tower_2])
+        normal_layer = BatchNormalization()(merge_layer)
+        output_layer = Dense(1, activation="sigmoid")(normal_layer)
+
+        siamese = keras.Model(inputs=[input_1, input_2], outputs=output_layer)
+        # siamese.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+        siamese.compile(loss=loss(margin=.01), optimizer='adam', metrics=['accuracy'])
+
+        return siamese
+        
+
+
+    def trainModel(self, model, processed_dict, seed=0, model_file=None):
         # print maximum length without truncation
         # np.set_printoptions(threshold=sys.maxsize)
 
@@ -628,10 +738,17 @@ class Model:
 
         print("\n=========================== Before model.fit ===================================")
         # Early stopping
-        # callback = EarlyStopping(monitor='loss', min_delta=0.001, patience=3, verbose=0, mode='auto', baseline=None, restore_best_weights=False)
-        # # train the data
-        # model.fit({'forward': x1_train, 'reverse': x2_train}, y1_train, epochs=self.epochs, batch_size=self.batch_size, validation_split=0.1, verbose=2, callbacks=[callback])
-        model.fit({'forward': x1_train, 'reverse': x2_train}, y1_train, epochs=self.epochs, batch_size=self.batch_size, validation_split=0.1, verbose=2)
+        checkpoint = ModelCheckpoint(model_file, monitor='val_accuracy', verbose=1, save_best_only=True, mode='max')
+        
+        # earlystop = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3,
+        #                          verbose=0, mode='auto', baseline=None, restore_best_weights=False)
+
+        callbacks_list = [checkpoint]
+        # train the data
+        history = model.fit({'forward': x1_train, 'reverse': x2_train}, y1_train, epochs=self.epochs,
+                  batch_size=self.batch_size, validation_split=0.1, verbose=2, callbacks=callbacks_list)
+        # model.fit({'forward': x1_train, 'reverse': x2_train}, y1_train, epochs=self.epochs,
+        #   batch_size=self.batch_size, validation_split=0.1, verbose=2)
         print("=========================== After model.fit ===================================\n")
         # Save the entire model as a SavedModel.
         # model.save('my_model')
@@ -647,6 +764,10 @@ class Model:
             berd = np.divide(np.exp(100*x), np.transpose(np.expand_dims(np.sum(np.exp(100*x), axis = 1), axis = 0), [1,0]))
             np.savetxt(os.path.join('./motif_files', 'filter_num_%d'%i+'.txt'), berd)
         """
+
+        # print(history.history)
+
+        
 
         print("\n=========================== Predictions ===================================\n")
 
@@ -668,8 +789,9 @@ class Model:
         train_auc_score = sklearn.metrics.roc_auc_score(
             y1_train_orig, predictions_train)
         train_accuracy = true_pred/len(predictions_train)
-        print('train-set auc score is: ' + str(train_auc_score))
-        print('train-set accuracy is: ' + str(train_accuracy))
+        # print('train-set auc score is: ' + str(train_auc_score))
+        # print('train-set accuracy is: ' + str(train_accuracy))
+        # train_accuracy = history.history['accuracy']
 
         ##########################################################
         # Prediction on test data
@@ -687,8 +809,9 @@ class Model:
         test_auc_score = sklearn.metrics.roc_auc_score(
             y1_test_orig, predictions_test)
         test_accuracy = true_pred/len(predictions_test)
-        print('\ntest-set auc score is: ' + str(test_auc_score))
-        print('test-set accuracy is: ' + str(test_accuracy))
+        # print('\ntest-set auc score is: ' + str(test_auc_score))
+        # print('test-set accuracy is: ' + str(test_accuracy))
+        # test_accuracy = history.history['val_accuracy']
         print("========================================================================\n")
 
         results = {
@@ -696,7 +819,140 @@ class Model:
             "train_accuracy": train_accuracy,
             "test_auc_score": test_auc_score,
             "test_accuracy": test_accuracy,
+            "history": history,
             "seed": seed,
+        }
+
+        return results
+
+
+    def trainSiameseNetwork(self, model, processed_pair_dict, seed=0, model_file=None):
+        # print maximum length without truncation
+        # np.set_printoptions(threshold=sys.maxsize)
+
+        fw_fasta = processed_pair_dict["forward"]
+        rc_fasta = processed_pair_dict["reverse"]
+        readout = processed_pair_dict["readout"]
+
+        print("Input size: " + str(fw_fasta.shape))
+
+        if seed == 0:
+            # seed = random.randint(1,1000)
+            seed = 527
+
+        x1_train, x1_test, y1_train, y1_test = train_test_split(
+            fw_fasta, readout, test_size=0.1, random_state=seed)
+        # split for reverse complemenet sequences
+        x2_train, x2_test, y2_train, y2_test = train_test_split(
+            rc_fasta, readout, test_size=0.1, random_state=seed)
+
+        # Copy the original target values for later uses
+        # y1_train_orig = y1_train.copy()
+        # y1_test_orig = y1_test.copy()
+
+        # if we want to merge two training dataset
+        # comb = np.concatenate((y1_train, y2_train))
+
+        # Change it to categorical values
+        # y1_train = keras.utils.to_categorical(y1_train, 2)
+        # y1_test = keras.utils.to_categorical(y1_test, 2)
+
+        print("\n=========================== Before model.fit ===================================")
+        # Early stopping
+        # checkpoint = ModelCheckpoint(model_file, monitor='val_accuracy', verbose=1, save_best_only=True, mode='max')
+        
+        # earlystop = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3,
+        #                          verbose=0, mode='auto', baseline=None, restore_best_weights=False)
+
+        # callbacks_list = [checkpoint]
+        print(np.transpose(x1_train, [1, 0, 2, 3]).shape)
+        forward1 = np.transpose(x1_train, [1, 0, 2, 3])[0]
+        reverse1 = np.transpose(x2_train, [1, 0, 2, 3])[0]
+        forward2 = np.transpose(x1_train, [1, 0, 2, 3])[1]
+        reverse2 = np.transpose(x2_train, [1, 0, 2, 3])[1]
+
+        # train the data
+        history = model.fit([{'forward1': forward1, 'reverse1': reverse1}, {'forward2': forward2, 'reverse2': reverse2}], y1_train, epochs=self.epochs,
+                  batch_size=self.batch_size, validation_split=0.1, verbose=2)
+        # model.fit({'forward': x1_train, 'reverse': x2_train}, y1_train, epochs=self.epochs,
+        #   batch_size=self.batch_size, validation_split=0.1, verbose=2)
+        print("=========================== After model.fit ===================================\n")
+        # Save the entire model as a SavedModel.
+        # model.save('my_model')
+        # Save weights only: later used in self.filter_importance()
+        # model.save_weights('./my_checkpoint')
+
+        # save each convolution learned filters as txt file
+        """
+        motif_weight = model.get_weights()
+        motif_weight = np.asarray(motif_weight[0])
+        for i in range(int(self.filters)):
+            x = motif_weight[:,:,i]
+            berd = np.divide(np.exp(100*x), np.transpose(np.expand_dims(np.sum(np.exp(100*x), axis = 1), axis = 0), [1,0]))
+            np.savetxt(os.path.join('./motif_files', 'filter_num_%d'%i+'.txt'), berd)
+        """
+
+        # print(history.history)
+
+        
+
+        print("\n=========================== Predictions ===================================\n")
+
+        ##########################################################
+        # Prediction on train data
+        predictions_train = model.predict({'forward1': forward1, 'reverse1': reverse1, 'forward2': forward2, 'reverse2': reverse2})
+        # See which label has the highest confidence value
+        predictions_train = np.argmax(predictions_train, axis=1)
+
+        print("y train: ")
+        print(y1_train[:10])
+        print("predictions: ")
+        print(predictions_train[:10])
+
+        true_pred, false_pred = 0, 0
+        for count, value in enumerate(predictions_train):
+            if y1_train[count] == predictions_train[count]:
+                true_pred += 1
+            else:
+                false_pred += 1
+
+        # Compute Area Under the Receiver Operating Characteristic Curve (ROC AUC) from prediction scores.
+        # Returns AUC
+        train_auc_score = sklearn.metrics.roc_auc_score(
+            y1_train, predictions_train)
+        train_accuracy = true_pred/len(predictions_train)
+        print('train-set auc score is: ' + str(train_auc_score))
+        print('train-set accuracy is: ' + str(train_accuracy))
+        # train_accuracy = history.history['accuracy']
+
+        ##########################################################
+        # Prediction on test data
+        # pred_test = model.predict({'forward': x1_test, 'reverse': x2_test})
+        # # See which label has the highest confidence value
+        # predictions_test = np.argmax(pred_test, axis=1)
+
+        # true_pred, false_pred = 0, 0
+        # for count, value in enumerate(predictions_test):
+        #     if y1_test_orig[count] == predictions_test[count]:
+        #         true_pred += 1
+        #     else:
+        #         false_pred += 1
+
+        # test_auc_score = sklearn.metrics.roc_auc_score(
+        #     y1_test_orig, predictions_test)
+        # test_accuracy = true_pred/len(predictions_test)
+        # print('\ntest-set auc score is: ' + str(test_auc_score))
+        # print('test-set accuracy is: ' + str(test_accuracy))
+        # test_accuracy = history.history['val_accuracy']
+        print("========================================================================\n")
+
+        results = {
+            # "train_auc_score": train_auc_score,
+            # "train_accuracy": train_accuracy,
+            # "test_auc_score": test_auc_score,
+            # "test_accuracy": test_accuracy,
+            # "history": history,
+            # "seed": seed,
         }
 
         return results
@@ -738,11 +994,13 @@ class Model:
         # input_data = {'forward': x1_train, 'reverse': x2_train}
 
         # Change it to categorical values
-        train_output_data_categorical = keras.utils.to_categorical(train_output_data, 2)
+        train_output_data_categorical = keras.utils.to_categorical(
+            train_output_data, 2)
 
         print("\n=========================== Before model.fit ===================================")
         # train the data
-        model.fit(train_input_data, train_output_data_categorical, epochs=self.epochs, batch_size=self.batch_size, validation_split=0.1, verbose=2)
+        model.fit(train_input_data, train_output_data_categorical, epochs=self.epochs,
+                  batch_size=self.batch_size, validation_split=0.1, verbose=2)
         print("=========================== After model.fit ===================================\n")
         # Save the entire model as a SavedModel.
         # model.save('my_model')
@@ -812,7 +1070,6 @@ class Model:
 
         return results
 
-
     def trainModelWithHardwareSupport(self, model, processed_dict, with_gpu=False):
         if with_gpu == True:
             device_name = tf.test.gpu_device_name()
@@ -830,20 +1087,16 @@ class Model:
         else:
             trainModel(model, processed_dict)
 
-
-    def cross_val(self, model, processed_dict):
+    def cross_val(self, model, processed_dict, seed):
         fw_fasta = processed_dict["forward"]
         rc_fasta = processed_dict["reverse"]
         readout = processed_dict["readout"]
 
-        #if self.activation_type == 'linear':
-        #    readout = np.log2(readout)
-        #    readout = np.ndarray.tolist(readout)
+        forward_shuffle, readout_shuffle = shuffle(
+            fw_fasta, readout, random_state=seed)
+        reverse_shuffle, readout_shuffle = shuffle(
+            rc_fasta, readout, random_state=seed)
 
-        forward_shuffle, readout_shuffle = shuffle(fw_fasta, readout, random_state=seed)
-        reverse_shuffle, readout_shuffle = shuffle(rc_fasta, readout, random_state=seed)
-        readout_shuffle = np.array(readout_shuffle)
-        #readout_shuffle2 = np.array(readout_shuffle2)
         # initialize metrics to save values
         metrics = []
 
@@ -854,10 +1107,8 @@ class Model:
         # Provides train/test indices to split data in train/test sets.
         kFold = StratifiedKFold(n_splits=5)
         ln = np.zeros(len(readout_shuffle))
-        print("readout shuffle length---------",len(readout_shuffle))
+        print("readout shuffle length---------", len(readout_shuffle))
         for train, test in kFold.split(ln, ln):
-            model = None
-            #model, model2 = self.create_model(processed_dict)
             # print("----------",train,test)
             fwd_train = forward_shuffle[train]
             fwd_test = forward_shuffle[test]
@@ -865,35 +1116,7 @@ class Model:
             rc_test = reverse_shuffle[test]
             y_train = readout_shuffle[train]
             y_test = readout_shuffle[test]
-            #y_train = readout_shuffle2[train]
-            #y_test = readout_shuffle2[test]
 
-            # fwd_train = np.asarray(fwd_train)
-            # fwd_test = np.asarray(fwd_test)
-            # rc_train = np.asarray(rc_train)
-            # rc_test = np.asarray(rc_test)
-            # y1_train = np.asarray(y1_train)
-            # y1_test = np.asarray(y1_test)
-            # y2_train = np.asarray(y2_train)
-            # y2_test = np.asarray(y2_test)
-
-            # # change from list to numpy array
-            # y1_train = np.asarray(y1_train)
-            # y1_test = np.asarray(y1_test)
-            # y2_train = np.asarray(y2_train)
-            # y2_test = np.asarray(y2_test)
-
-            # # Copy the original target values for later uses
-            # y1_train_orig = y1_train.copy()
-            # y1_test_orig = y1_test.copy()
-
-            # # if we want to merge two training dataset
-            # # comb = np.concatenate((y1_train, y2_train))
-
-            # ## Change it to categorical values
-            # y1_train = keras.utils.to_categorical(y1_train, 2)
-            # y1_test = keras.utils.to_categorical(y1_test, 2)
-            # model.fit({'forward': x1_train, 'reverse': x2_train}, y1_train, epochs=self.epochs, batch_size=self.batch_size, validation_split=0.1)
             y_train = np.asarray(y_train)
             y_test = np.asarray(y_test)
             y_train_orig = y_train.copy()
@@ -901,18 +1124,19 @@ class Model:
             y_train = keras.utils.to_categorical(y_train, 2)
             y_test = keras.utils.to_categorical(y_test, 2)
             # Early stopping
-            callback = EarlyStopping(monitor='loss', min_delta=0.001, patience=3, verbose=0, mode='auto', baseline=None, restore_best_weights=False)
-            history = model.fit({'forward': fwd_train, 'reverse': rc_train}, y_train, epochs=self.epochs, batch_size=self.batch_size, validation_split=0.0, callbacks = [callback],verbose=2)
+            callback = EarlyStopping(monitor='loss', min_delta=0.001, patience=3,
+                                     verbose=0, mode='auto', baseline=None, restore_best_weights=False)
+            history = model.fit({'forward': fwd_train, 'reverse': rc_train}, y_train, epochs=self.epochs,
+                                batch_size=self.batch_size, validation_split=0.0, callbacks=[callback], verbose=2)
 
             # Without early stopping
             # model.fit({'forward': x1_train, 'reverse': x2_train}, y1_train, epochs=self.epochs, batch_size=self.batch_size, validation_split=0.0)
 
             # pred_train = model.predict({'forward': x1_test, 'reverse': x2_test})
 
-            pred_train = model.predict({'forward': fwd_train, 'reverse': rc_train})
+            pred_train = model.predict(
+                {'forward': fwd_train, 'reverse': rc_train})
             predictions_train = np.argmax(pred_train, axis=1)
-            print(y_train_orig[0:10])
-            print(predictions_train[0:10])
 
             true_pred = 0
             false_pred = 0
@@ -925,7 +1149,8 @@ class Model:
             print('Total number of train-set predictions is: ' + str(len(y_train)))
             print('Number of correct train-set predictions is: ' + str(true_pred))
             print('Number of incorrect train-set predictions is: ' + str(false_pred))
-            auc_score = sklearn.metrics.roc_auc_score(y_train_orig, predictions_train)
+            auc_score = sklearn.metrics.roc_auc_score(
+                y_train_orig, predictions_train)
             print('train-set auc score is: ' + str(auc_score))
             print('train-set seed number is: ' + str(seed))
             # auc_score = sklearn.metrics.roc_auc_score(y_train, pred_train)
@@ -934,11 +1159,10 @@ class Model:
             train_auc_scores.append(auc_score)
 
             ##########################################################
-            #Apply on test set
-            pred_test = model.predict({'forward': fwd_test, 'reverse': rc_test})
+            # Apply on test set
+            pred_test = model.predict(
+                {'forward': fwd_test, 'reverse': rc_test})
             predictions_test = np.argmax(pred_test, axis=1)
-            print(y_test_orig[0:10])
-            print(predictions_test[0:10])
 
             true_pred = 0
             false_pred = 0
@@ -951,14 +1175,27 @@ class Model:
             print('Total number of test-set predictions is: ' + str(len(y_test)))
             print('Number of correct test-set predictions is: ' + str(true_pred))
             print('Number of incorrect test-set predictions is: ' + str(false_pred))
-            auc_score = sklearn.metrics.roc_auc_score(y_test_orig, predictions_test)
+            auc_score = sklearn.metrics.roc_auc_score(
+                y_test_orig, predictions_test)
             #auc_score = sklearn.metrics.roc_auc_score(y_test, pred)
             print('test-set auc score is: ' + str(auc_score))
             print('test-set seed number is: ' + str(seed))
             test_auc_scores.append(auc_score)
 
-        print('seed number = %d' %seed)
+        print('seed number = %d' % seed)
         print(train_auc_scores)
-        print('Mean train auc_scores of 10-fold cv is ' + str(np.mean(train_auc_scores)))
+        print('Mean train auc_scores of 10-fold cv is ' +
+              str(np.mean(train_auc_scores)))
         print(test_auc_scores)
-        print('Mean test auc_scores of 10-fold cv is ' + str(np.mean(test_auc_scores)))
+        print('Mean test auc_scores of 10-fold cv is ' +
+              str(np.mean(test_auc_scores)))
+
+        results = {
+            "train_auc_score": np.mean(train_auc_scores),
+            "train_accuracy": 0,
+            "test_auc_score": np.mean(test_auc_scores),
+            "test_accuracy": 0,
+            "seed": seed,
+        }
+
+        return results

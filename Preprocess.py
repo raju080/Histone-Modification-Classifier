@@ -1,4 +1,5 @@
 from os import read
+import os
 import sys
 import random
 import numpy as np
@@ -35,13 +36,14 @@ class Preprocessor:
     def readFaIntoList(self, fa_file):
         all_seq = []
         bases = ["A", "T", "G", "C"]
-        with open(fa_file, "r") as f:
-            for line in f:
-                if line[0] == ">":
-                    pass
-                else:
-                    all_seq.append(line.strip().upper().replace(
-                        "N", random.choice(bases)))
+        if os.path.isfile(fa_file):
+            with open(fa_file, "r") as f:
+                for line in f:
+                    if line[0] == ">":
+                        pass
+                    else:
+                        all_seq.append(line.strip().upper().replace(
+                            "N", random.choice(bases)))
         return all_seq
 
 
@@ -115,6 +117,8 @@ class Preprocessor:
 
         # reads the fasta files, generates forward sequenses, reverse complements and readouts
         dict = self.augment(pos_seq_file, neg_seq_file)
+
+        # print(dict)
 
         forward = []
         reverse = []

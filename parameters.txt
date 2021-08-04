@@ -1,7 +1,7 @@
-filters 256
+filters 512
 kernel_size 9
 pool_type Custom_sum
-regularizer L_1
+regularizer L_2
 activation_type relu
-epochs 12
-batch_size 20
+epochs 25
+batch_size 512

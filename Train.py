@@ -1,8 +1,11 @@
 import sys
 import os
+import random
 import subprocess
 import numpy as np
+import pandas as pd
 import h5py
+import matplotlib.pyplot as plt
 
 import tensorflow as tf
 from tensorflow.keras.models import save_model, load_model
@@ -16,35 +19,105 @@ from ConvolutionLayer import ConvolutionLayer
 
 # constants
 seed = 527
-total_seq_postfix = "_200"
-# types: basic, meuseum, vanilla_cnn, multi_cnn2, multi_cnn4, bpnet, deephistone
-model_type = 'deephistone'
+total_seq_postfix = "_20000"
+crossval_seq_postfix = ''
+# types: basic, meuseum, vanilla_cnn, multi_cnn2, multi_cnn4, bpnet, cnn_lstm, deephistone
+model_type = 'meuseum'
+
+
+
+# E116
+
 # output file to save the model after training
-model_file = 'TrainedModels/model'+ total_seq_postfix + '_' + model_type + '.h5'
+model_file = 'TrainedModels/E116/model' + total_seq_postfix + '_' + model_type + crossval_seq_postfix + '.h5'
+
+# model_file = 'TrainedModels/E116/model_200_meuseum.h5'
+
+siamese_network_file = 'TrainedModels/E116/siamese.h5'
+
+input_bed_file = 'E116/E116-H3K27ac/E116-H3K27ac.narrowPeak'
+pos_seq_file = 'E116/E116-H3K27ac/E116-H3K27ac_modified' + total_seq_postfix + '.fa'
+neg_seq_file = 'E116/E116-H3K27ac/E116-H3K27ac_negSet' + total_seq_postfix + '.fa'
+
+forward_seq_file = 'E116/E116-H3K27ac/forward' + total_seq_postfix + '.npy'
+reverse_seq_file = 'E116/E116-H3K27ac/reverse' + total_seq_postfix + '.npy'
+readout_file = 'E116/E116-H3K27ac/readout' + total_seq_postfix + '.npy'
+
+forward_qtl_ref_file = 'E116/E116-H3K27ac/forwardQTLref.npy'
+reverse_qtl_ref_file = 'E116/E116-H3K27ac/reverseQTLref.npy'
+forward_qtl_alt_file = 'E116/E116-H3K27ac/forwardQTLalt.npy'
+reverse_qtl_alt_file = 'E116/E116-H3K27ac/reverseQTLalt.npy'
+
+forward_pair_data_seq_file = 'E116/E116-H3K27ac/forwardPairData.npy'
+reverse_pair_data_seq_file = 'E116/E116-H3K27ac/reversePairData.npy'
+pair_data_readout_file = 'E116/E116-H3K27ac/readoutPairData.npy'
+
+
+# file names for 4 classes: signal pos neg, qtl ref alt
+# forward_seq_file = 'E116/E116-H3K27ac/forward.npy'
+# reverse_seq_file = 'E116/E116-H3K27ac/reverse.npy'
+# readout_file = 'E116/E116-H3K27ac/readout.npy'
+
+# signal_pos_seq_file = 'E116/E116-H3K27ac/signal_pos.npy'
+# signal_neg_seq_file = 'E116/E116-H3K27ac/signal_neg.npy'
+# qtl_ref_seq_file = 'E116/E116-H3K27ac/qtl_ref.npy'
+# qtl_alt_seq_file = 'E116/E116-H3K27ac/qtl_alt.npy'
+
+
+# train_forward_seq_file = 'E116/E116-H3K27ac/forward' + total_seq_postfix + '_train.npy'
+# train_reverse_seq_file = 'E116/E116-H3K27ac/reverse' + total_seq_postfix + '_train.npy'
+# train_readout_file = 'E116/E116-H3K27ac/readout' + total_seq_postfix + '_train.npy'
+
+# test_forward_seq_file = 'E116/E116-H3K27ac/forward' + total_seq_postfix + '_test.npy'
+# test_reverse_seq_file = 'E116/E116-H3K27ac/reverse' + total_seq_postfix + '_test.npy'
+# test_readout_file = 'E116/E116-H3K27ac/readout' + total_seq_postfix + '_test.npy'
+
+
+
+
+
+
+
+# E118
+
+# output file to save the model after training
+# model_file = 'TrainedModels/E118/model' + total_seq_postfix + '_' + model_type + crossval_seq_postfix + '.h5'
+
 
 # model_file = 'TrainedModels/model_20000_multi_cnn4_withPooling_e12_f256.h5'
 
-input_bed_file = 'Dataset/E118-H3K27ac.narrowPeak'
-pos_seq_file = 'Dataset/E118-H3K27ac_modified' + total_seq_postfix + '.fa'
-neg_seq_file = 'Dataset/E118-H3K27ac_negSet' + total_seq_postfix + '.fa'
+# input_bed_file = 'Dataset/E118-H3K27ac.narrowPeak'
+# pos_seq_file = 'Dataset/E118-H3K27ac_modified' + total_seq_postfix + '.fa'
+# neg_seq_file = 'Dataset/E118-H3K27ac_negSet' + total_seq_postfix + '.fa'
 
-forward_seq_file = 'Dataset/forward' + total_seq_postfix + '.npy'
-reverse_seq_file = 'Dataset/reverse' + total_seq_postfix + '.npy'
-readout_file = 'Dataset/readout' + total_seq_postfix + '.npy'
+# forward_seq_file = 'Dataset/forward' + total_seq_postfix + '.npy'
+# reverse_seq_file = 'Dataset/reverse' + total_seq_postfix + '.npy'
+# readout_file = 'Dataset/readout' + total_seq_postfix + '.npy'
 
-train_forward_seq_file = 'Dataset/forward' + total_seq_postfix + '_train.npy'
-train_reverse_seq_file = 'Dataset/reverse' + total_seq_postfix + '_train.npy'
-train_readout_file = 'Dataset/readout' + total_seq_postfix + '_train.npy'
+# forward_seq_file = 'Dataset/forwardQTLref.npy'
+# reverse_seq_file = 'Dataset/reverseQTLref.npy'
+# readout_file = 'Dataset/readoutQTLref.npy'
 
-test_forward_seq_file = 'Dataset/forward' + total_seq_postfix + '_test.npy'
-test_reverse_seq_file = 'Dataset/reverse' + total_seq_postfix + '_test.npy'
-test_readout_file = 'Dataset/readout' + total_seq_postfix + '_test.npy'
+# forward_seq_file = 'Dataset/forwardQTLalt.npy'
+# reverse_seq_file = 'Dataset/reverseQTLalt.npy'
+# readout_file = 'Dataset/readoutQTLalt.npy'
+
+# train_forward_seq_file = 'Dataset/forward' + total_seq_postfix + '_train.npy'
+# train_reverse_seq_file = 'Dataset/reverse' + total_seq_postfix + '_train.npy'
+# train_readout_file = 'Dataset/readout' + total_seq_postfix + '_train.npy'
+
+# test_forward_seq_file = 'Dataset/forward' + total_seq_postfix + '_test.npy'
+# test_reverse_seq_file = 'Dataset/reverse' + total_seq_postfix + '_test.npy'
+# test_readout_file = 'Dataset/readout' + total_seq_postfix + '_test.npy'
+
+output_file_name = 'all_results.csv'
 
 
-def processInputData(pos_seq_file, neg_seq_file):
+
+def processInputData(pos_seq_file, neg_seq_file, forward_seq_file, reverse_seq_file, readout_file):
     preprocessor = Preprocessor()
     processed_dict = preprocessor.oneHotEncode(
-        pos_seq_file=pos_seq_file, neg_seq_file=neg_seq_file) 
+        pos_seq_file=pos_seq_file, neg_seq_file=neg_seq_file)
     np.save(forward_seq_file, processed_dict['forward'])
     np.save(reverse_seq_file, processed_dict['reverse'])
     np.save(readout_file, processed_dict['readout'])
@@ -53,15 +126,15 @@ def processInputData(pos_seq_file, neg_seq_file):
 
 def readInputData(forward_seq_file, reverse_seq_file, readout_file):
     processed_dict = {}
-    processed_dict['forward'] = np.load(forward_seq_file)    
+    processed_dict['forward'] = np.load(forward_seq_file)
     processed_dict['reverse'] = np.load(reverse_seq_file)
     processed_dict['readout'] = np.load(readout_file)
     return processed_dict
 
 
-
 def splitTrainTestData(forward_seq_file, reverse_seq_file, readout_file):
-    processed_dict = readInputData(forward_seq_file, reverse_seq_file, readout_file)
+    processed_dict = readInputData(
+        forward_seq_file, reverse_seq_file, readout_file)
     forward = processed_dict['forward']
     reverse = processed_dict['reverse']
     readout = processed_dict['readout']
@@ -81,13 +154,76 @@ def splitTrainTestData(forward_seq_file, reverse_seq_file, readout_file):
     np.save(test_readout_file, y1_test)
 
 
+def preparePairData(forward_seq_file, reverse_seq_file, readout_file, forwardQTLref_file, reverseQTLref_file, forwardQTLalt_file, reverseQTLalt_file, forward_pair_data_seq_file, reverse_pair_data_seq_file, pair_data_readout_file, pair_data_size=2000):
+    processed_data = readInputData(forward_seq_file, reverse_seq_file, readout_file)
+    forward = processed_data['forward']
+    reverse = processed_data['reverse']
+    readout = processed_data['readout']
+
+    forward_pos_sequences = []
+    reverse_pos_sequences = []
+    forward_neg_sequences = []
+    reverse_neg_sequences = []
+    for i in range(len(readout)):
+        if (readout[i] == 0):
+            forward_neg_sequences.append(forward[i])
+            reverse_neg_sequences.append(reverse[i])
+        elif (readout[i] == 1):
+            forward_pos_sequences.append(forward[i])
+            reverse_pos_sequences.append(reverse[i])
+    forward_pos_sequences = np.array(forward_pos_sequences)
+    reverse_pos_sequences = np.array(reverse_pos_sequences)
+    forward_neg_sequences = np.array(forward_neg_sequences)
+    reverse_neg_sequences = np.array(reverse_neg_sequences)
+
+    forward_qtl_ref_sequences = np.load(forwardQTLref_file)
+    reverse_qtl_ref_sequences = np.load(reverseQTLref_file)
+    forward_qtl_alt_sequences = np.load(forwardQTLalt_file)
+    reverse_qtl_alt_sequences = np.load(reverseQTLalt_file)
+
+    forward_classes = [forward_pos_sequences, forward_neg_sequences, forward_qtl_ref_sequences, forward_qtl_alt_sequences]
+    reverse_classes = [reverse_pos_sequences, reverse_neg_sequences, reverse_qtl_ref_sequences, reverse_qtl_alt_sequences]
+    forward_pair_data = []
+    reverse_pair_data = []
+    readout_pair_data = []
+    size_per_class = pair_data_size//10
+
+    for i in range(4):
+        for j in range(i, 4):
+            A_forward = forward_classes[i]
+            A_reverse = reverse_classes[i]
+            B_forward = forward_classes[j]
+            B_reverse = reverse_classes[j]
+            for k in range(size_per_class):
+                idx1 = random.randint(0, len(A_forward)-1)
+                idx2 = random.randint(0, len(B_forward)-1)
+                if ((i%2) == (j%2)):
+                    label = 0
+                else:
+                    label = 1
+                forward_pair_data.append((A_forward[idx1], B_forward[idx2]))
+                reverse_pair_data.append((A_reverse[idx1], B_reverse[idx2]))
+                readout_pair_data.append(label)
+
+    forward_pair_data = np.array(forward_pair_data)
+    reverse_pair_data = np.array(reverse_pair_data)
+    readout_pair_data = np.array(readout_pair_data)
+
+    np.save(forward_pair_data_seq_file, forward_pair_data)
+    np.save(reverse_pair_data_seq_file, reverse_pair_data)
+    np.save(pair_data_readout_file, readout_pair_data)
+
+
+
+
+
 # get dictionary from text file
 def readParameters(file_name):
     dict = {}
     with open(file_name) as f:
         for line in f:
-           (key, val) = line.split()
-           dict[key] = val
+            (key, val) = line.split()
+            dict[key] = val
     # change string values to integer values
     dict["filters"] = int(dict["filters"])
     dict["kernel_size"] = int(dict["kernel_size"])
@@ -96,19 +232,44 @@ def readParameters(file_name):
     return dict
 
 
+def plotCurve(history):
+    # plot
+    print('plotting curve')
+    print(history.history)
+    plt.plot(history.history['accuracy'])
+    plt.plot(history.history['val_accuracy'])
+    # plt.title('model accuracy')
+    # plt.legend(['train acc', 'val acc'], loc='upper left')
+    # plt.show()
+
+    plt.plot(history.history['loss'])
+    plt.plot(history.history['val_loss'])
+    plt.title('model accuracy & loss')
+    plt.xlabel('epoch')
+    plt.ylabel('acc & loss')
+    plt.legend(['train acc', 'val acc', 'train loss', 'val loss'], loc='upper left')
+    # plt.show()
+    plt.savefig(model_file.split('.')[0] + '.png')
+
+
 def createAndTrainBasicModel(processed_data, parameters_dict, model_file):
     # initiate a model with the specified parameters
     # seed = random.randint(1,1000)
     seed = 527
     model = Model(filters=parameters_dict["filters"], kernel_size=parameters_dict["kernel_size"], pool_type=parameters_dict["pool_type"], regularizer=parameters_dict["regularizer"],
-            activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
+                  activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
     # creating the basic model
     basic_model = model.create_basic_model(processed_data["forward"].shape)
     basic_model.summary()
     # running the model with the processed data
-    results = model.trainModel(basic_model, processed_data, seed)
+    if (crossval_seq_postfix == ''):
+        results = model.trainModel(basic_model, processed_data, seed, model_file)
+    else:
+        results = model.cross_val(basic_model, processed_data, seed)
+
     # results = model.trainModelWithHardwareSupport(basic_model, processed_data, with_gpu=True)
     basic_model.save(model_file)
+    plotCurve(results['history'])
 
     return results
 
@@ -118,12 +279,15 @@ def createAndTrainVanillaCNN(processed_data, parameters_dict, model_file):
     # seed = random.randint(1,1000)
     seed = 527
     model = Model(filters=parameters_dict["filters"], kernel_size=parameters_dict["kernel_size"], pool_type=parameters_dict["pool_type"], regularizer=parameters_dict["regularizer"],
-            activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
+                  activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
     # creating the basic model
     cnn_model = model.create_Vanilla_CNN_model(processed_data["forward"].shape)
     cnn_model.summary()
     # running the model with the processed data
-    results = model.trainModelOneInputLayer(cnn_model, processed_data, seed)
+    if (crossval_seq_postfix == ''):
+        results = model.trainModel(cnn_model, processed_data, seed, model_file)
+    else:
+        results = model.cross_val(cnn_model, processed_data, seed)
     # results = model.trainModelWithHardwareSupport(cnn_model, processed_data, with_gpu=True)
     cnn_model.save(model_file)
 
@@ -135,12 +299,15 @@ def createAndTrainMultiCNN2(processed_data, parameters_dict, model_file):
     # seed = random.randint(1,1000)
     seed = 527
     model = Model(filters=parameters_dict["filters"], kernel_size=parameters_dict["kernel_size"], pool_type=parameters_dict["pool_type"], regularizer=parameters_dict["regularizer"],
-            activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
+                  activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
     # creating the basic model
     cnn_model = model.create_Multi_CNN2_model(processed_data["forward"].shape)
     cnn_model.summary()
     # running the model with the processed data
-    results = model.trainModelOneInputLayer(cnn_model, processed_data, seed)
+    if (crossval_seq_postfix == '') :
+        results = model.trainModel(cnn_model, processed_data, seed, model_file)
+    else:
+        results = model.cross_val(cnn_model, processed_data, seed)
     # results = model.trainModelWithHardwareSupport(cnn_model, processed_data, with_gpu=True)
     cnn_model.save(model_file)
 
@@ -152,12 +319,15 @@ def createAndTrainMultiCNN4(processed_data, parameters_dict, model_file):
     # seed = random.randint(1,1000)
     seed = 527
     model = Model(filters=parameters_dict["filters"], kernel_size=parameters_dict["kernel_size"], pool_type=parameters_dict["pool_type"], regularizer=parameters_dict["regularizer"],
-            activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
+                  activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
     # creating the basic model
     cnn_model = model.create_Multi_CNN4_model(processed_data["forward"].shape)
     cnn_model.summary()
     # running the model with the processed data
-    results = model.trainModel(cnn_model, processed_data, seed)
+    if (crossval_seq_postfix == ''):
+        results = model.trainModel(cnn_model, processed_data, seed, model_file)
+    else:
+        results = model.cross_val(cnn_model, processed_data, seed)
     # results = model.trainModelWithHardwareSupport(cnn_model, processed_data, with_gpu=True)
     cnn_model.save(model_file)
 
@@ -169,14 +339,19 @@ def createAndTrainMeuseumModel(processed_data, parameters_dict, model_file, alph
     # seed = random.randint(1,1000)
     seed = 527
     model = Model(filters=parameters_dict["filters"], kernel_size=parameters_dict["kernel_size"], pool_type=parameters_dict["pool_type"], regularizer=parameters_dict["regularizer"],
-            activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
+                  activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
     # creating the meuseum model
-    meuseum_model = model.create_meuseum_model(processed_data["forward"].shape, alpha, beta, bkg_const)
+    meuseum_model = model.create_meuseum_model(
+        processed_data["forward"].shape, alpha, beta, bkg_const)
     meuseum_model.summary()
     # running the model with the processed data
-    results = model.trainModel(meuseum_model, processed_data, seed)
+    if (crossval_seq_postfix == ''):
+        results = model.trainModel(meuseum_model, processed_data, seed, model_file)
+    else:
+        results = model.cross_val(meuseum_model, processed_data, seed)
     # results = model.trainModelWithHardwareSupport(meuseum_model, processed_data, with_gpu=True)
     meuseum_model.save(model_file)
+    plotCurve(results['history'])
 
     return results
 
@@ -186,12 +361,15 @@ def createAndTrainBpnetModel(processed_data, parameters_dict, model_file):
     # seed = random.randint(1,1000)
     seed = 527
     model = Model(filters=parameters_dict["filters"], kernel_size=parameters_dict["kernel_size"], pool_type=parameters_dict["pool_type"], regularizer=parameters_dict["regularizer"],
-            activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
+                  activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
     # creating the bpnet model
     bpnet_model = model.create_bpnet_model(processed_data["forward"].shape)
     bpnet_model.summary()
     # running the model with the processed data
-    results = model.trainModel(bpnet_model, processed_data, seed)
+    if (crossval_seq_postfix == ''):
+        results = model.trainModel(bpnet_model, processed_data, seed, model_file)
+    else:
+        results = model.cross_val(bpnet_model, processed_data, seed)
     # results = model.trainModelWithHardwareSupport(bpnet_model, processed_data, with_gpu=True)
     bpnet_model.save(model_file)
 
@@ -203,55 +381,166 @@ def createAndTrainDeepHistoneModel(processed_data, parameters_dict, model_file):
     # seed = random.randint(1,1000)
     seed = 527
     model = Model(filters=parameters_dict["filters"], kernel_size=parameters_dict["kernel_size"], pool_type=parameters_dict["pool_type"], regularizer=parameters_dict["regularizer"],
-            activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
+                  activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
     # creating the bpnet model
-    dhistone_model = model.create_deepHistone_model(processed_data["forward"].shape)
+    dhistone_model = model.create_deepHistone_model(
+        processed_data["forward"].shape)
     dhistone_model.summary()
     # running the model with the processed data
-    results = model.trainModel(dhistone_model, processed_data, seed)
+    if (crossval_seq_postfix == ''):
+        results = model.trainModel(dhistone_model, processed_data, seed, model_file)
+    else:
+        results = model.cross_val(dhistone_model, processed_data, seed)
     # results = model.trainModelWithHardwareSupport(dhistone_model, processed_data, with_gpu=True)
     dhistone_model.save(model_file)
 
     return results
 
 
+def createAndTrainCNNLstmModel(processed_data, parameters_dict, model_file):
+    # initiate a model with the specified parameters
+    # seed = random.randint(1,1000)
+    seed = 527
+    model = Model(filters=parameters_dict["filters"], kernel_size=parameters_dict["kernel_size"], pool_type=parameters_dict["pool_type"], regularizer=parameters_dict["regularizer"],
+                  activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
+    # creating the basic model
+    basic_model = model.create_CNNLSTM_model(processed_data["forward"].shape)
+    basic_model.summary()
+    # running the model with the processed data
+    if (crossval_seq_postfix == ''):
+        results = model.trainModel(basic_model, processed_data, seed, model_file)
+    else:
+        results = model.cross_val(basic_model, processed_data, seed)
+
+    # results = model.trainModelWithHardwareSupport(basic_model, processed_data, with_gpu=True)
+    basic_model.save(model_file)
+
+    return results
+
+
+
+def createAndTrainSiameseNetwork(processed_pair_data, parameters_dict, embedding_model_file, siamese_model_file):
+    # initiate a model with the specified parameters
+    # seed = random.randint(1,1000)
+    seed = 527
+    model = Model(filters=parameters_dict["filters"], kernel_size=parameters_dict["kernel_size"], pool_type=parameters_dict["pool_type"], regularizer=parameters_dict["regularizer"],
+                  activation_type=parameters_dict["activation_type"], epochs=parameters_dict["epochs"], batch_size=parameters_dict["batch_size"])
+
+    embedding_model = load_model(embedding_model_file, custom_objects={
+                       'ConvolutionLayer': ConvolutionLayer})
+    # creating the basic model
+    siamese = model.createSiameseNetwork(embedding_model, processed_pair_data["forward"].shape)
+    siamese.summary()
+    # running the model with the processed data
+    if (crossval_seq_postfix == ''):
+        results = model.trainSiameseNetwork(siamese, processed_pair_data, seed, siamese_model_file)
+    else:
+        results = model.cross_val(siamese, processed_pair_data, seed)
+
+    # results = model.trainModelWithHardwareSupport(basic_model, processed_data, with_gpu=True)
+    siamese.save(siamese_model_file)
+
+    return results
+
+
+
+def saveResults(parameters_dict, results): 
+    epigenome = 'E118'
+    histone = 'H3K27ac'
+    input_length = total_seq_postfix[1:]
+    global model_type
+    global output_file_name
+
+    computed_cnt = -1
+    if os.path.isfile(output_file_name):
+        try:
+            df = pd.read_csv(output_file_name)
+            computed_cnt = len(df)
+        except IOError:
+            computed_cnt = -1
+    else:
+        computed_cnt = -1
+
+    with open(output_file_name, "a") as output_file:
+        if (computed_cnt<0):
+            output_file.write("Model,Epigenome ID,Histone marker,Input length,Epochs,Batch size,Filters,Kernel size,Pool type,Activation,Regularizer,Alpha,Beta,Seed,Train auc score,Train accuracy,Test auc score,Test accuracy,Cross validation,Observation\n")
+
+        output_text = "{},{},{},{},{},{},{},{},{},{},{},{},{:.3f},{:.3f},{:.3f},{:.3f},{},{}\n".format(
+                                                    model_type,
+                                                    epigenome,
+                                                    histone,
+                                                    input_length,
+                                                    parameters_dict['epochs'],
+                                                    parameters_dict['batch_size'],
+                                                    parameters_dict['filters'],
+                                                    parameters_dict['kernel_size'],
+                                                    parameters_dict['pool_type'],
+                                                    parameters_dict['activation_type'],
+                                                    parameters_dict['regularizer'],
+                                                    results['seed'],
+                                                    results['train_auc_score'],
+                                                    results['train_accuracy'],
+                                                    results['test_auc_score'],
+                                                    results['test_accuracy'],
+                                                    0,
+                                                    None,
+                                                )
+        # print(output_text)
+        output_file.write(output_text)
+        output_file.flush()
+
+
 def createAndTrainModel(processed_data, parameters_dict, model_type):
-    if model_type=='basic':
-        results = createAndTrainBasicModel(processed_data, parameters_dict, model_file)
-    elif model_type=='meuseum':
-        results = createAndTrainMeuseumModel(processed_data, parameters_dict, model_file)
-    elif model_type=='vanilla_cnn':
-        results = createAndTrainVanillaCNN(processed_data, parameters_dict, model_file)
-    elif model_type=='multi_cnn2':
-        results = createAndTrainMultiCNN2(processed_data, parameters_dict, model_file)
-    elif model_type=='multi_cnn4':
-        results = createAndTrainMultiCNN4(processed_data, parameters_dict, model_file)
-    elif model_type=='bpnet':
-        results = createAndTrainBpnetModel(processed_data, parameters_dict, model_file)
-    elif model_type=='deephistone':
-        results = createAndTrainDeepHistoneModel(processed_data, parameters_dict, model_file)
+    if model_type == 'basic':
+        results = createAndTrainBasicModel(
+            processed_data, parameters_dict, model_file)
+    elif model_type == 'meuseum':
+        results = createAndTrainMeuseumModel(
+            processed_data, parameters_dict, model_file)
+    elif model_type == 'vanilla_cnn':
+        results = createAndTrainVanillaCNN(
+            processed_data, parameters_dict, model_file)
+    elif model_type == 'multi_cnn2':
+        results = createAndTrainMultiCNN2(
+            processed_data, parameters_dict, model_file)
+    elif model_type == 'multi_cnn4':
+        results = createAndTrainMultiCNN4(
+            processed_data, parameters_dict, model_file)
+    elif model_type == 'bpnet':
+        results = createAndTrainBpnetModel(
+            processed_data, parameters_dict, model_file)
+    elif model_type == 'deephistone':
+        results = createAndTrainDeepHistoneModel(
+            processed_data, parameters_dict, model_file)
+    elif model_type == 'cnn_lstm':
+        results = createAndTrainCNNLstmModel(
+            processed_data, parameters_dict, model_file)
+
+    print(results)
+    saveResults(parameters_dict, results)
 
     return results
 
 
 def testModel(model_file, model_type, forward_seq_file, reverse_seq_file, readout_file):
-    model = load_model(model_file, custom_objects={'ConvolutionLayer': ConvolutionLayer})
+    model = load_model(model_file, custom_objects={
+                       'ConvolutionLayer': ConvolutionLayer})
     model.summary()
-    processed_dict = readInputData(forward_seq_file, reverse_seq_file, readout_file)
+    processed_dict = readInputData(
+        forward_seq_file, reverse_seq_file, readout_file)
     forward = processed_dict['forward']
     reverse = processed_dict['reverse']
     readout = processed_dict['readout']
-    print("Input size: " + str(processed_dict['forward'].shape))
+    # print("Input size forward: " + str(processed_dict['forward'].shape))
+    # print("Input size reverse: " + str(processed_dict['reverse'].shape))
+    # print("Input size readout: " + str(processed_dict['readout'].shape))
     # Prediction on test data
-    if model_type=='basic' or model_type=='meuseum' or model_type=='multi_cnn4' or model_type=='deephistone' or model_type=='bpnet':
-        test_input_data = {'forward': forward, 'reverse': reverse}
-        test_output_data = readout
-    elif model_type=='vanilla_cnn' or model_type=='multi_cnn2':
+    if model_type == 'vanilla_cnn' or model_type == 'multi_cnn2':
         test_input_data = np.concatenate((forward, reverse), axis=0)
         test_output_data = np.concatenate((readout, readout), axis=0)
     else:
-        test_input_data = np.concatenate((forward, reverse), axis=0)
-        test_output_data = np.concatenate((readout, readout), axis=0)
+        test_input_data = {'forward': forward, 'reverse': reverse}
+        test_output_data = readout
     print("\n=========================== Prediction ===================================\n")
     pred_test = model.predict(test_input_data)
     # See which label has the highest confidence value
@@ -259,7 +548,7 @@ def testModel(model_file, model_type, forward_seq_file, reverse_seq_file, readou
 
     # print("test input size: " + str(test_input_data.shape))
     # print("test output size: " + str(test_output_data.shape))
-    # print("prediction output size: " + str(predictions_test.shape))
+    print("prediction output size: " + str(predictions_test.shape))
 
     true_pred, false_pred = 0, 0
     for count, value in enumerate(predictions_test):
@@ -268,15 +557,51 @@ def testModel(model_file, model_type, forward_seq_file, reverse_seq_file, readou
         else:
             false_pred += 1
 
-    test_auc_score = sklearn.metrics.roc_auc_score(
-        test_output_data, predictions_test)
+    # test_auc_score = sklearn.metrics.roc_auc_score(
+        # test_output_data, predictions_test)
+    test_auc_score = 0
     test_accuracy = true_pred/len(predictions_test)
-    print('\ntest-set auc score is: ' + str(test_auc_score))
+    # print('\ntest-set auc score is: ' + str(test_auc_score))
     print('test-set accuracy is: ' + str(test_accuracy))
     print("========================================================================\n")
     return test_auc_score, test_accuracy
 
 
+def testModelOnQTLs(model_file, model_type, forward_seq_ref_file, reverse_seq_ref_file,  forward_seq_alt_file, reverse_seq_alt_file):
+    model = load_model(model_file, custom_objects={
+                       'ConvolutionLayer': ConvolutionLayer})
+    model.summary()
+    forward_ref_sequences = np.load(forward_seq_ref_file)
+    reverse_ref_sequences = np.load(reverse_seq_ref_file)
+    forward_alt_sequences = np.load(forward_seq_alt_file)
+    reverse_alt_sequences = np.load(reverse_seq_alt_file)
+
+    test_input_ref_data = {'forward': forward_ref_sequences, 'reverse': reverse_ref_sequences}
+
+    test_input_alt_data = {'forward': forward_alt_sequences, 'reverse': reverse_alt_sequences}
+    
+    pred_test_ref = model.predict(test_input_ref_data)
+    pred_test_alt = model.predict(test_input_alt_data)
+
+    diff_arr = []
+    for i in range(len(pred_test_ref)):
+        diff_arr.append(np.abs(pred_test_ref[i][1] - pred_test_alt[i][1]))
+    print(diff_arr[:10])
+    print(np.average(diff_arr))
+
+    # fig = plt.figure(figsize =(10, 7))
+
+    # plt.plot(diff_arr[:20])
+    plt.boxplot(diff_arr)
+    # plt.title('model accuracy')
+    # plt.legend(['train acc', 'val acc'], loc='upper left')
+    # plt.show()
+
+    plt.title('qtl diff plot')
+    plt.xlabel('qtls')
+    plt.ylabel('fis')
+    plt.legend(['train acc'], loc='upper left')
+    plt.savefig(model_file.split('.')[0] + '_qtl.png')
 
 # def hyperParameterTuner(processed_data):
 #     epigenome = "E116"
@@ -302,7 +627,7 @@ def testModel(model_file, model_type, forward_seq_file, reverse_seq_file, readou
 #         except IOError:
 #             computed_cnt = -1
 #     else:
-#         computed_cnt = -1 
+#         computed_cnt = -1
 
 #     with open(output_file_name, "a") as output_file:
 #         if (computed_cnt<0):
@@ -334,9 +659,9 @@ def testModel(model_file, model_type, forward_seq_file, reverse_seq_file, readou
 #                                             # print(results)
 #                                             output_text = "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{:.3f},{:.3f},{:.3f},{:.3f},{},{}\n".format(
 #                                                 index,
-#                                                 epigenome, 
-#                                                 histone, 
-#                                                 input_length, 
+#                                                 epigenome,
+#                                                 histone,
+#                                                 input_length,
 #                                                 epoch,
 #                                                 b_size,
 #                                                 fltr,
@@ -362,49 +687,53 @@ def testModel(model_file, model_type, forward_seq_file, reverse_seq_file, readou
 
 
 
-
-
 def main():
-    ### Modify the bed file keeping qvalue>=4
+    # Modify the bed file keeping qvalue>=4
     # preprocessor = Preprocessor()
     # preprocessor.modifyBedFile(input_bed_file)
 
-
-    ### Generate the negative sequences
+    # Generate the negative sequences
     # command = 'Rscript bed_to_null_seq.R'
     # os.system(command)
 
-
-    ### Convert bed to fa
+    # Convert bed to fa
     # subprocess.call(['sh', './bed_to_fa.sh'])
 
-
-    ### Shrink fa
+    # Shrink fa
     # subprocess.call(['sh', './fa_shrink.sh'])
 
+    # Preprocess the pos and neg fasta file
+    # processInputData(pos_seq_file, neg_seq_file, forward_seq_file, reverse_seq_file, readout_file)
+    # processInputData('Dataset/haQTLDeephistone_alt.fa', '')
 
-    ### Preprocess the pos and neg fasta file
-    # processInputData(pos_seq_file, neg_seq_file)
-
-
-    ### Split train and test data
+    # Split train and test data
     # splitTrainTestData(forward_seq_file, reverse_seq_file, readout_file)
 
-
-    ### Run model on processed data
-    processed_data = readInputData(train_forward_seq_file, train_reverse_seq_file, train_readout_file)
-    print("Input size: " + str(processed_data['forward'].shape))
+    # Separate signal pos & signal neg
     # processed_data = readInputData(forward_seq_file, reverse_seq_file, readout_file)
-    # run the model once with the parameters
+    # preparePairData(forward_seq_file, reverse_seq_file, readout_file, forward_qtl_ref_file, reverse_qtl_ref_file, forward_qtl_alt_file, reverse_qtl_alt_file, forward_pair_data_seq_file, reverse_pair_data_seq_file, pair_data_readout_file, 2000)
+
+    # Run model on processed data
+    # processed_data = readInputData(
+    #     forward_seq_file, reverse_seq_file, readout_file)
+    # print("Input size: " + str(processed_data['forward'].shape))
+    # processed_data = readInputData(forward_seq_file, reverse_seq_file, readout_file)
+    # Run the model once with the parameters
+    # parameter_file = 'parameters.txt'
+    # parameters_dict = readParameters(parameter_file)
+    # createAndTrainModel(processed_data, parameters_dict, model_type)
+
+    # Run a model on siamese network
+    processed_data = readInputData(forward_pair_data_seq_file, reverse_pair_data_seq_file, pair_data_readout_file)
     parameter_file = 'parameters.txt'
     parameters_dict = readParameters(parameter_file)
+    createAndTrainSiameseNetwork(processed_data, parameters_dict, model_file, siamese_network_file)
 
-    createAndTrainModel(processed_data, parameters_dict, model_type)
-
-    ### Prediction on the test data
+    # Prediction on the test data
     # testModel(model_file, model_type, test_forward_seq_file, test_reverse_seq_file, test_readout_file)
-    
-    
+    # testModel(model_file, model_type, forward_seq_file, reverse_seq_file, readout_file)
+    # testModelOnQTLs(model_file, model_type, 'E116/E116-H3K27ac/forwardQTLref.npy', 'E116/E116-H3K27ac/reverseQTLref.npy', 'E116/E116-H3K27ac/forwardQTLalt.npy', 'E116/E116-H3K27ac/reverseQTLalt.npy')
+
 
 if __name__ == "__main__":
     sys.exit(main())

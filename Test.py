@@ -1,12 +1,16 @@
 from os import read
+import os
 import sys
 import time
 import pandas as pd
 import numpy as np
+import myvariant
+# from biothings_client import get_client
 
+# pip3 install myvariant
 
 seed = 527
-total_seq_postfix = "_5000"
+total_seq_postfix = "_20000"
 # types: basic, meuseum, vanilla_cnn, multi_cnn
 model_type = 'vanilla_cnn'
 # output file to save the model after training
@@ -50,10 +54,99 @@ def writeDataFrameToBed(file_path, df):
     df.to_csv(file_path, header=None,
               index=None, sep='\t')
 
-def readQTLs(file_path):
-    dfs = pd.read_excel(file_path, sheet_name=None)
+def readQTLs(input_file_path):
+    dfs = pd.read_excel(input_file_path, sheet_name=None)
     qtl_df = dfs.get('SuppTable_3_delrosario')
-    print(qtl_df)
+    qtl_df.index = qtl_df['#rsid']
+    qtl_df['start'] = qtl_df['pos']-500
+    qtl_df['end'] = qtl_df['pos']+500
+    qtl_df['ref'] = np.array(['X']*len(qtl_df))
+    qtl_df['alt'] = np.array(['X']*len(qtl_df))
+    qtl_df['refaltidx'] = qtl_df['#rsid'].copy()
+    qtl_df = qtl_df[qtl_df['#rsid'].apply(lambda row: (row[0]!='N' and '.' not in row))]
+
+    mv = myvariant.MyVariantInfo()
+    # mv = get_client('variant')
+    rsid = list(qtl_df['#rsid'])
+    qrs = mv.querymany(rsid, scopes='dbsnp.rsid', fields='dbsnp')
+
+    for qr in qrs:
+        try:
+            id = qr['dbsnp']['rsid']
+            refbp = qr['dbsnp']['ref']
+            altbp = qr['dbsnp']['alt']
+            qtl_df.at[id, 'ref'] = refbp
+            qtl_df.at[id, 'alt'] = altbp
+            qtl_df.at[id, 'refaltidx'] = '>' + qtl_df.at[id, 'chr'] + ':' + str(qtl_df.at[id, 'start']) + '-' + str(qtl_df.at[id, 'end'])
+        except:
+            refbp = 'X'
+            altbp = 'X'
+
+        
+    # ref_list = []
+    # alt_list = []
+    # for qr in qrs:
+    #     try:
+    #         ref_list.append(qr['dbsnp']['ref'])
+    #         alt_list.append(qr['dbsnp']['alt'])
+    #     except:
+    #         ref_list.append('X')
+    #         alt_list.append('X')
+    # print(ref_list[:10])
+    # qtl_df['ref'] = np.array(ref_list)
+    # qtl_df['alt'] = np.array(alt_list)
+    
+    qtl_df = qtl_df[qtl_df['ref'].apply(lambda r: r!='X')]
+
+    out_df = qtl_df[['chr', 'start', 'end']]
+    ref_alt = qtl_df[['refaltidx', 'ref', 'alt']]
+
+    output_file_path = input_file_path.split(".")[0] + "_ref.bed"
+    refalt_file_path = input_file_path.split(".")[0] + "_snprefalt.txt"
+    out_df.to_csv(output_file_path, sep='\t', index=False, header=False)
+    ref_alt.to_csv(refalt_file_path, index=False)
+    # print(mv.querymany(['rs9927825'], scopes='dbsnp.rsid',
+        #   fields='dbsnp'))
+    
+
+def createAltFaQTLs(input_file_path):
+    refalt_file_path = input_file_path.split(".")[0] + "_snprefalt.txt"
+    ref_alt_df = pd.read_csv(refalt_file_path, index_col=0)
+    output_file_path = input_file_path.split(".")[0] + "_alt.fa"
+    input_file_path = input_file_path.split(".")[0] + "_ref.fa"
+    c = 0
+    i = 0
+    
+    with open(input_file_path, 'r') as fin, open(output_file_path, 'w') as fout:
+        id = ''
+        for line in fin:
+            if line[0]=='>':
+                id = line[:-1]
+                fout.write(line)
+            else:
+                if line[499].capitalize() == ref_alt_df.at[id, 'ref'].capitalize():
+                    line = line[:499] + ref_alt_df.at[id, 'alt'].capitalize() + line[500:]
+                    fout.write(line)
+                    c = c+1
+                i = i+1
+    print(len(ref_alt_df))
+    print(c)
+
+
+
+def createAltSequences(fa_file_path):
+    output_file_path = fa_file_path.split(".")[0] + "_alt.fa"
+    if os.path.isfile(fa_file_path):
+            with open(fa_file_path, "r") as fin, open(output_file_path) as fout:
+                for line in fin:
+                    if line[0] == ">":
+                        fout.write(line)
+                    else:
+                        all_seq.append(line.strip().upper().replace(
+                            "N", random.choice(bases)))
+
+
+
 
 
 def processForDeepHistone(inputFile):
@@ -66,10 +159,13 @@ def main():
     # df['chromEnd'] = df['chromEnd']+1
     # writeDataFrameToBed(neg_input_bed_file, df)
 
-    # qtl_file = 'Dataset/41592_2015_BFnmeth3326_MOESM187_ESM.xlsx'
+    qtl_file = 'Dataset/haQTLDeephistone.xlsx'
     # readQTLs(qtl_file)
-    processed_data = readInputData(test_forward_seq_file, test_reverse_seq_file, test_readout_file)
-    print(processed_data)
+    createAltFaQTLs(qtl_file)
+    
+    
+    # processed_data = readInputData(test_forward_seq_file, test_reverse_seq_file, test_readout_file)
+    # print(processed_data)
 
 
 
