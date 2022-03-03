@@ -1,0 +1,1 @@
+python3 Train.py > log_ostream.log

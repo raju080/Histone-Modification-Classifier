@@ -1,0 +1,7 @@
+filters 512
+kernel_size 9
+pool_type Max
+regularizer L_2
+activation_type relu
+epochs 10
+batch_size 512
